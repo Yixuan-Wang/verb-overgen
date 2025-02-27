@@ -1,0 +1,39 @@
+[project]
+name = "verb-overgen"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+    "numpy>=2",
+    "polars>=1.23.0",
+    "python-dotenv>=1.0.1",
+    "rich>=13.9.4",
+    "torch",
+    "transformers>=4.49.0",
+]
+
+[project.optional-dependencies]
+prep = [
+    "supar",
+]
+
+[build-system]
+requires = ["setuptools", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[tool.uv.sources]
+torch = { index = "pytorch" }
+supar = { git = "https://github.com/yzhangcs/parser", rev = "v1.1.4" }
+
+[[tool.uv.index]]
+name = "pytorch"
+url = "https://download.pytorch.org/whl/cu121"
+explicit = true
+
+[dependency-groups]
+dev = [
+    "ipdb>=0.13.13",
+    "ipython>=8.32.0",
+]
+
