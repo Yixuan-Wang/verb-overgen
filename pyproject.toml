@@ -5,10 +5,12 @@ description = "Add your description here"
 readme = "README.md"
 requires-python = ">=3.11"
 dependencies = [
+    "matplotlib>=3.10.0",
     "numpy>=2",
     "polars>=1.23.0",
     "python-dotenv>=1.0.1",
     "rich>=13.9.4",
+    "seaborn>=0.13.2",
     "torch",
     "transformers>=4.49.0",
 ]
@@ -37,3 +39,7 @@ dev = [
     "ipython>=8.32.0",
 ]
 
+[tool.ruff]
+lint.extend-select = ["ISC", "COM818"]
+lint.ignore = ["E741"]
+lint.flake8-implicit-str-concat.allow-multiline = false

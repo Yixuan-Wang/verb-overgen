@@ -1,16 +1,14 @@
-from collections.abc import Callable
-from functools import partial, wraps
+from functools import partial
 from os import environ
-from typing import Any, TypeVar
 import polars as pl
-from rich.progress import Progress
-from rich import print
 from supar import Parser
 import torch
 import warnings
 
 from verb_overgen.util.log_util import register_workload_on_df, report_progress
 import verb_overgen.util.pl_util as pl_util
+
+from .common import DtParse, Parse
 
 # Here we use the `biaffine-dep-en`, which is less accurate but faster than
 # the roberta version `biaffine-dep-roberta-en`
@@ -32,14 +30,7 @@ torch.cuda.set_device("cuda:0")
 warnings.filterwarnings("ignore")
 
 
-parse_dtype = pl.Struct(
-    {
-        "rel": pl.List(pl.String),
-        "arc": pl.List(pl.Int64),
-        "word": pl.List(pl.String),
-    }
-)
-def parse(input: pl.Series) -> list[dict[str, list[Any]]]:
+def parse(input: pl.Series) -> list[Parse]:
     global PARSER
 
     input = input.to_list()  # type: ignore
@@ -73,7 +64,7 @@ if __name__ == "__main__":
                         advance=BATCH_SIZE,
                         description="Parsing sentences",
                     ),
-                    return_dtype=pl.List(parse_dtype),
+                    return_dtype=pl.List(DtParse),
                 )
                 .explode()
                 .alias("parse")
