@@ -9,6 +9,7 @@ from supar import Parser
 import torch
 import warnings
 
+from verb_overgen.util.log_util import register_workload_on_df, report_progress
 import verb_overgen.util.pl_util as pl_util
 
 # Here we use the `biaffine-dep-en`, which is less accurate but faster than
@@ -53,29 +54,6 @@ def parse(input: pl.Series) -> list[dict[str, list[Any]]]:
         for i in range(len(parsed))
     ]
 
-WORKLOAD = 0
-def register_workload(df: pl.DataFrame):
-    global WORKLOAD
-    WORKLOAD = df.select(pl.len()).item()
-    return df
-
-F = TypeVar("F", bound=Callable)
-def report_progress(func: F, advance: int = 1, description: str | None = None) -> F:
-    global WORKLOAD
-
-    progress = Progress().__enter__()
-    progress_task = progress.add_task(description or "", total=WORKLOAD)
-
-    @wraps(func)
-    def wrapper(*args, **kwargs):
-        result = func(*args, **kwargs)
-        progress.update(progress_task, advance=advance)
-        if progress.finished:
-            progress.__exit__(None, None, None)
-        return result
-
-    return wrapper  # type: ignore
-
 if __name__ == "__main__":
     dataset = dataset.with_row_index()
 
@@ -84,7 +62,7 @@ if __name__ == "__main__":
         dataset.filter(
             pl.col("text").str.split(" ").list.len().ge(MIN_MEANINGFUL_SENTENCE_LEN)
         )
-        .pipe(register_workload)
+        .pipe(register_workload_on_df)
         .select(
             pl.col("index"),
             (
