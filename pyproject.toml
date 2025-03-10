@@ -11,7 +11,8 @@ dependencies = [
     "python-dotenv>=1.0.1",
     "rich>=13.9.4",
     "seaborn>=0.13.2",
-    "torch",
+    "torch==2.5.1+cu121; platform_system == 'linux'",
+    "torch==2.5.1+cpu; platform_system == 'darwin'",
     "transformers>=4.49.0",
 ]
 
@@ -34,6 +35,7 @@ torch = [
 [[tool.uv.index]]
 name = "torch-cpu"
 url = "https://download.pytorch.org/whl/cpu"
+explicit = true
 
 [[tool.uv.index]]
 name = "torch-cu121"
