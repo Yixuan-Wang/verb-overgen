@@ -1,5 +1,6 @@
 from functools import partial
 from os import environ
+from typing import Any
 import polars as pl
 from supar import Parser
 import torch
@@ -10,13 +11,8 @@ import verb_overgen.util.pl_util as pl_util
 
 from .common import DtParse, Parse
 
-# Here we use the `biaffine-dep-en`, which is less accurate but faster than
-# the roberta version `biaffine-dep-roberta-en`
 # :see-also: https://github.com/yzhangcs/parser?tab=readme-ov-file#dependency-parsing
-#
-# Also the documentation is [outdated](https://github.com/yzhangcs/parser/issues/145)
-# Check [`supar.NAME`] for real names.
-PARSER = Parser.load("biaffine-dep-en")
+PARSER = Parser.load("dep-biaffine-roberta-en")
 
 DATA_PATH_BASE = environ["DATA_PATH_BASE"]
 dataset = pl.read_parquet(f"{DATA_PATH_BASE}/babylm/aochildes.parquet")
@@ -34,18 +30,21 @@ def parse(input: pl.Series) -> list[Parse]:
     global PARSER
 
     input = input.to_list()  # type: ignore
-    parsed = PARSER.predict(input, lang="en", prob=True, verbose=False)
+    parsed: Any = PARSER.predict(input, lang="en", prob=True, verbose=False)  # type: ignore
 
+    # parsed.sentences is a list of such dictionaries.
     return [
         {
-            "rel": parsed.rels[i],
-            "arc": parsed.arcs[i],
-            "word": parsed.words[i],
+            "rel": sent.rels,
+            "arc": sent.arcs,
+            "word": sent.words,
         }
-        for i in range(len(parsed))
+        for sent in parsed.sentences
     ]
 
 if __name__ == "__main__":
+    timestamp = __import__("datetime").datetime.now().strftime(r"%Y%m%dT%H%M%S")
+
     dataset = dataset.with_row_index()
 
     MIN_MEANINGFUL_SENTENCE_LEN = 3
@@ -73,4 +72,4 @@ if __name__ == "__main__":
         .pipe(partial(dataset.join, on="index", how="left"))
     )
 
-    dataset_parsed.write_parquet(f"{DATA_PATH_BASE}/babylm/aochildes_parsed.parquet")
+    dataset_parsed.write_parquet(f"{DATA_PATH_BASE}/babylm/{timestamp}.aochildes_parsed.parquet")
