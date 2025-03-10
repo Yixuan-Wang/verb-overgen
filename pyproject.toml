@@ -26,7 +26,7 @@ build-backend = "setuptools.build_meta"
 
 [tool.uv.sources]
 torch = { index = "pytorch" }
-supar = { git = "https://github.com/yzhangcs/parser", rev = "v1.1.4" }
+supar = { git = "https://github.com/yzhangcs/parser", rev = "main" }
 
 [[tool.uv.index]]
 name = "pytorch"
