@@ -2,18 +2,39 @@
 Functions that inject linguistic lexical information into the data.
 """
 
-from nltk.stem import WordNetLemmatizer
+import spacy
+from spacy.tokens import Doc 
 from functools import partial
+from typing_extensions import deprecated
 
-LEMMATIZER = WordNetLemmatizer()
-"""
-The `nltk` WordNet lemmatizer.
-"""
+from apfel import unimplemented
+from apfel.container.once import Lazy
 
-to_lemma = LEMMATIZER.lemmatize
-"""
-Use the `nltk` WordNet lemmatizer to get the lemma of a word.
-"""
+
+@deprecated("nltk is not accurate enough")
+def to_lemma(word: str, pos: str):
+    """
+    Use the `nltk` WordNet lemmatizer to get the lemma of a word.
+    """
+    unimplemented()
+
+
+@Lazy
+def spacy_pipeline():
+    return spacy.load("en_core_web_md")
+
+def vec_to_lemma(word: list[str]):
+    """
+    Convert a vector of words to a vector of lemmas.
+    """
+    nlp = spacy_pipeline()
+    doc = Doc(nlp.vocab, words=word)
+    doc = nlp(doc)
+    return {
+        "lemma": [token.lemma_ for token in doc],
+        "pos": [token.pos_ for token in doc],
+    }
+
 
 BIDGOOD_VERBS = {
     "transitive_only": { "cut", "slice", "chop", "mash", "hit", "strike", "bite", "peck", "touch", "stroke", "slash", "saw", "crush", "squash", "kick", "tap", "whack", "punch", "nudge", "kiss", "kill", "destroy", "demolish", "take", "bring", "raise", "hoist", "lift", "lower", "leave", "drop", "tickle", "amuse", "feed", "delight", "give", "madden", "lend", "pay", "offer" },

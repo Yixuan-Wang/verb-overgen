@@ -1,23 +1,31 @@
+from pathlib import Path
 import fire
 import polars as pl
 
-from verb_overgen.prep.lib.lexical import to_lemma
+from verb_overgen.util.log_util import report_progress, register_workload_on_df
+from verb_overgen.prep.lib.lexical import vec_to_lemma
+
+lemmatize_dtype = pl.Struct({
+    "lemma": pl.List(pl.String),
+    "pos": pl.List(pl.String),
+})
 
 def main(path: str):
     dataset = pl.read_parquet(path)
 
-    if not input(f"""\
-Path = {path},
-Height = {dataset.height},
-Lemmatize the dataset? (y/n): """) == "y":
-        exit(1)
+    dataset_nontrivial = dataset.filter(pl.col("parse").is_not_null())
 
-    dataset = dataset.with_columns(
-        pl.col("parse").struct.field("word").list.eval(pl.element().map_elements(to_lemma, return_dtype=pl.String)).alias("lemma")
+    dataset_lemma = dataset_nontrivial.pipe(register_workload_on_df).select(
+        pl.col("index"),
+        pl.col("parse").struct.field("word").map_elements(report_progress(vec_to_lemma), lemmatize_dtype).struct.unnest(),
     )
 
-    dataset.write_parquet(path)    
-
+    # Notice that this join is very slow.
+    dataset = dataset.join(dataset_lemma, on="index", how="left", maintain_order="left")
+    new_path = Path(path).with_suffix(".{timestamp}.lemma.parquet".format(
+        timestamp=__import__("datetime").datetime.now().strftime(r"%Y%m%dT%H%M%S")
+    ))
+    dataset.write_parquet(new_path)
 
 if __name__ == "__main__":
     fire.Fire(main)

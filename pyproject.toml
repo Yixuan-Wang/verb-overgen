@@ -5,19 +5,23 @@ description = "Add your description here"
 readme = "README.md"
 requires-python = ">=3.11"
 dependencies = [
+    "apfel",
+    "fire>=0.7.0",
     "matplotlib>=3.10.0",
     "numpy>=2",
     "polars>=1.23.0",
     "python-dotenv>=1.0.1",
     "rich>=13.9.4",
     "seaborn>=0.13.2",
-    "torch==2.5.1+cu121; platform_system == 'linux'",
-    "torch==2.5.1+cpu; platform_system == 'darwin'",
+    "statsmodels>=0.14.4",
+    "torch",
     "transformers>=4.49.0",
 ]
 
 [project.optional-dependencies]
 prep = [
+    "nltk>=3.9.1",
+    "spacy>=3.8.4",
     "supar",
 ]
 
@@ -28,9 +32,10 @@ build-backend = "setuptools.build_meta"
 [tool.uv.sources]
 supar = { git = "https://github.com/yzhangcs/parser", rev = "v1.1.4" }
 torch = [
-  { index = "torch-cpu", marker = "platform_system == 'darwin'"},
-  { index = "torch-cu121", marker = "platform_system == 'linux'"},
+  { index = "torch-cpu", marker = "sys_platform == 'darwin'"},
+  { index = "torch-cu121", marker = "sys_platform == 'linux'"},
 ]
+apfel = { git = "https://github.com/Yixuan-Wang/apfel.git", tag = "v0.1.0" }
 
 [[tool.uv.index]]
 name = "torch-cpu"
@@ -45,7 +50,9 @@ explicit = true
 [dependency-groups]
 dev = [
     "ipdb>=0.13.13",
+    "ipykernel>=6.29.5",
     "ipython>=8.32.0",
+    "ipywidgets>=8.1.5",
 ]
 
 [tool.ruff]
