@@ -1,0 +1,104 @@
+{"timestamp": "2025-03-17T15:10:44.031432", "index": 37722, "sentence": "i hear that puppy don't you .", "is_good_english": "g"}
+{"timestamp": "2025-03-17T15:10:49.348414", "index": 63046, "sentence": "it's nice and close .", "is_good_english": "t"}
+{"timestamp": "2025-03-17T15:11:15.043476", "sentence": "absolutely not .", "index": 205613, "is_good_english": "y", "is_pos_ok": true, "is_lemma_ok": true, "is_parse_ok": "y"}
+{"timestamp": "2025-03-17T15:16:28.442461", "sentence": "well you know that thing on sesame street where the little boy gets lost and he is told to remember whatever he did last he should do first ?", "index": 77992, "is_good_english": "y", "is_pos_ok": true, "is_lemma_ok": true, "is_parse_ok": "y"}
+{"timestamp": "2025-03-17T15:16:36.568269", "index": 204356, "sentence": "how come he'll do that ?", "is_good_english": "t"}
+{"timestamp": "2025-03-17T15:17:13.849515", "sentence": "sure you can .", "index": 134858, "is_good_english": "y", "is_pos_ok": true, "is_lemma_ok": true, "is_parse_ok": "y"}
+{"timestamp": "2025-03-17T15:17:58.240417", "sentence": "or riding .", "index": 169300, "is_good_english": "y", "is_pos_ok": true, "is_lemma_ok": true, "is_parse_ok": "y"}
+{"timestamp": "2025-03-17T15:18:16.917594", "sentence": "do you want me ?", "index": 128416, "is_good_english": "y", "is_pos_ok": true, "is_lemma_ok": true, "is_parse_ok": "y"}
+{"timestamp": "2025-03-17T15:18:37.467901", "sentence": "cars go on the street ?", "index": 14073, "is_good_english": "y", "is_pos_ok": true, "is_lemma_ok": true, "is_parse_ok": "y"}
+{"timestamp": "2025-03-17T15:19:25.308296", "sentence": "is it next door .", "index": 199962, "is_good_english": "y", "is_pos_ok": true, "is_lemma_ok": true, "is_parse_ok": "y"}
+{"timestamp": "2025-03-17T15:19:32.612450", "index": 185386, "sentence": "yeah you sure .", "is_good_english": "g"}
+{"timestamp": "2025-03-17T15:19:38.645330", "index": 96594, "sentence": "what color's the grass ?", "is_good_english": "t"}
+{"timestamp": "2025-03-17T15:19:44.921391", "index": 131159, "sentence": "in the jar say in the jar .", "is_good_english": "m"}
+{"timestamp": "2025-03-17T15:20:36.359401", "sentence": "oh did you put it where it was supposed to be .", "index": 37765, "is_good_english": "y", "is_pos_ok": true, "is_lemma_ok": true, "is_parse_ok": "y"}
+{"timestamp": "2025-03-17T15:20:51.578126", "sentence": "they don't have any bearings !", "index": 137687, "is_good_english": "y", "is_pos_ok": true, "is_lemma_ok": true, "is_parse_ok": "y"}
+{"timestamp": "2025-03-17T15:21:17.098783", "sentence": "come here .", "index": 138351, "is_good_english": "y", "is_pos_ok": true, "is_lemma_ok": true, "is_parse_ok": "y"}
+{"timestamp": "2025-03-17T15:21:22.330283", "index": 13151, "sentence": "what's it ?", "is_good_english": "t"}
+{"timestamp": "2025-03-17T15:22:10.081026", "sentence": "okay your turn again matty if you still wanna keep going .", "index": 75856, "is_good_english": "y", "is_pos_ok": true, "is_lemma_ok": true, "is_parse_ok": "y"}
+{"timestamp": "2025-03-17T15:22:34.967819", "sentence": "okay good nap carl .", "index": 100500, "is_good_english": "y", "is_pos_ok": true, "is_lemma_ok": true, "is_parse_ok": "y"}
+{"timestamp": "2025-03-17T15:22:47.005636", "sentence": "thank you .", "index": 55525, "is_good_english": "y", "is_pos_ok": true, "is_lemma_ok": true, "is_parse_ok": "y"}
+{"timestamp": "2025-03-17T15:22:51.710013", "index": 159699, "sentence": "look at ?", "is_good_english": "g"}
+{"timestamp": "2025-03-17T15:23:31.841193", "sentence": "now they try to catch the cat up in the tree .", "index": 201206, "is_good_english": "y", "is_pos_ok": true, "is_lemma_ok": true, "is_parse_ok": "n"}
+{"timestamp": "2025-03-17T15:24:07.290777", "sentence": "and look the kittie is in the carriage too .", "index": 114822, "is_good_english": "y", "is_pos_ok": true, "is_lemma_ok": true, "is_parse_ok": "y"}
+{"timestamp": "2025-03-17T15:24:45.218857", "sentence": "it was a big hole .", "index": 165680, "is_good_english": "y", "is_pos_ok": true, "is_lemma_ok": true, "is_parse_ok": "y"}
+{"timestamp": "2025-03-17T15:25:05.791462", "sentence": "when it rains yeah ?", "index": 115176, "is_good_english": "y", "is_pos_ok": true, "is_lemma_ok": true, "is_parse_ok": "y"}
+{"timestamp": "2025-03-17T15:25:09.279321", "index": 151793, "sentence": "then we're gonna start playing okay .", "is_good_english": "t"}
+{"timestamp": "2025-03-17T15:26:11.949704", "sentence": "and what color was the inside of the ears ?", "index": 136121, "is_good_english": "y", "is_pos_ok": true, "is_lemma_ok": true, "is_parse_ok": "n"}
+{"timestamp": "2025-03-17T15:26:57.253637", "sentence": "let's leave it on .", "index": 7532, "is_good_english": "y", "is_pos_ok": true, "is_lemma_ok": false, "is_parse_ok": "y"}
+{"timestamp": "2025-03-17T15:27:02.694675", "index": 120134, "sentence": "that's very good ?", "is_good_english": "t"}
+{"timestamp": "2025-03-17T15:27:08.252529", "index": 143468, "sentence": "ask ask her .", "is_good_english": "m"}
+{"timestamp": "2025-03-17T15:27:11.630259", "index": 48170, "sentence": "oh my gosh .", "is_good_english": "m"}
+{"timestamp": "2025-03-17T15:27:18.384728", "index": 65336, "sentence": "there's care bear on a swing ?", "is_good_english": "t"}
+{"timestamp": "2025-03-17T15:27:38.642534", "index": 198080, "sentence": "on top ?", "is_good_english": "m"}
+{"timestamp": "2025-03-17T15:27:47.767137", "index": 120640, "sentence": "he can ?", "is_good_english": "g"}
+{"timestamp": "2025-03-17T15:28:13.633681", "sentence": "he gets very very hungry ?", "index": 39299, "is_good_english": "y", "is_pos_ok": true, "is_lemma_ok": true, "is_parse_ok": "n"}
+{"timestamp": "2025-03-17T15:28:42.024890", "sentence": "what does this train go to ?", "index": 96004, "is_good_english": "y", "is_pos_ok": true, "is_lemma_ok": true, "is_parse_ok": "n"}
+{"timestamp": "2025-03-17T15:29:00.246287", "sentence": "slide it back .", "index": 163701, "is_good_english": "y", "is_pos_ok": true, "is_lemma_ok": true, "is_parse_ok": "y"}
+{"timestamp": "2025-03-17T15:29:26.056916", "sentence": "you can have those back .", "index": 176515, "is_good_english": "y", "is_pos_ok": true, "is_lemma_ok": true, "is_parse_ok": "y"}
+{"timestamp": "2025-03-17T15:30:04.402822", "sentence": "you know for the car wash and fixing you know that one ?", "index": 52587, "is_good_english": "y", "is_pos_ok": true, "is_lemma_ok": true, "is_parse_ok": "y"}
+{"timestamp": "2025-03-17T15:30:08.978500", "index": 158141, "sentence": "it's okay ?", "is_good_english": "t"}
+{"timestamp": "2025-03-17T15:30:47.236121", "sentence": "it is kind of like a chain .", "index": 82145, "is_good_english": "y", "is_pos_ok": true, "is_lemma_ok": true, "is_parse_ok": "y"}
+{"timestamp": "2025-03-17T15:30:56.493747", "index": 51440, "sentence": "and we saw did we see um ?", "is_good_english": "g"}
+{"timestamp": "2025-03-17T15:31:35.684669", "sentence": "is your lunch gone .", "index": 82662, "is_good_english": "y", "is_pos_ok": true, "is_lemma_ok": true, "is_parse_ok": "y"}
+{"timestamp": "2025-03-17T15:31:42.304714", "index": 163930, "sentence": "no he doesn't does he .", "is_good_english": "t"}
+{"timestamp": "2025-03-17T15:31:56.906482", "sentence": "does everybody use this ?", "index": 91849, "is_good_english": "y", "is_pos_ok": true, "is_lemma_ok": true, "is_parse_ok": "y"}
+{"timestamp": "2025-03-17T15:32:03.640125", "index": 38250, "sentence": "what's this ?", "is_good_english": "t"}
+{"timestamp": "2025-03-17T15:32:06.562205", "index": 3299, "sentence": "oh they're playing you said .", "is_good_english": "t"}
+{"timestamp": "2025-03-17T15:32:10.856114", "index": 200220, "sentence": "there was meat loaf where .", "is_good_english": "g"}
+{"timestamp": "2025-03-17T15:32:25.404085", "index": 34616, "sentence": "can you say pumpkin ?", "is_good_english": "p"}
+{"timestamp": "2025-03-17T15:32:52.964101", "sentence": "what is that thing anyway ?", "index": 41, "is_good_english": "y", "is_pos_ok": true, "is_lemma_ok": true, "is_parse_ok": "y"}
+{"timestamp": "2025-03-17T15:33:03.483298", "index": 96437, "sentence": "aha a teepee a piece of pie a party hat and a sailboat .", "is_good_english": "g"}
+{"timestamp": "2025-03-17T15:33:06.534790", "index": 85089, "sentence": "oh boy ?", "is_good_english": "m"}
+{"timestamp": "2025-03-17T15:33:12.136768", "index": 200749, "sentence": "the big big screen .", "is_good_english": "m"}
+{"timestamp": "2025-03-17T15:33:27.717671", "sentence": "this is mine .", "index": 119153, "is_good_english": "y", "is_pos_ok": true, "is_lemma_ok": true, "is_parse_ok": "y"}
+{"timestamp": "2025-03-17T15:33:54.783990", "sentence": "no let her play with yellow .", "index": 95778, "is_good_english": "y", "is_pos_ok": true, "is_lemma_ok": true, "is_parse_ok": "y"}
+{"timestamp": "2025-03-17T15:34:05.491382", "sentence": "crayons are fun .", "index": 35603, "is_good_english": "y", "is_pos_ok": true, "is_lemma_ok": true, "is_parse_ok": "y"}
+{"timestamp": "2025-03-17T15:34:23.210774", "sentence": "how are you eve ?", "index": 166524, "is_good_english": "y", "is_pos_ok": true, "is_lemma_ok": true, "is_parse_ok": "n"}
+{"timestamp": "2025-03-17T15:34:25.958684", "index": 169816, "sentence": "what's in there ?", "is_good_english": "t"}
+{"timestamp": "2025-03-17T15:34:46.987397", "sentence": "can you knock them down ?", "index": 87507, "is_good_english": "y", "is_pos_ok": true, "is_lemma_ok": true, "is_parse_ok": "y"}
+{"timestamp": "2025-03-17T15:34:50.802706", "index": 60527, "sentence": "arms up .", "is_good_english": "m"}
+{"timestamp": "2025-03-17T15:34:54.959497", "index": 130860, "sentence": "what honey ?", "is_good_english": "m"}
+{"timestamp": "2025-03-17T15:35:11.087522", "sentence": "you hold the car tight ?", "index": 200314, "is_good_english": "y", "is_pos_ok": true, "is_lemma_ok": true, "is_parse_ok": "y"}
+{"timestamp": "2025-03-17T15:35:22.938042", "index": 57013, "sentence": "let's see if we have enough for each finger here's one and this one is what .", "is_good_english": "p"}
+{"timestamp": "2025-03-17T15:35:25.314987", "index": 58899, "sentence": "right there .", "is_good_english": "m"}
+{"timestamp": "2025-03-17T15:35:44.189018", "sentence": "you say this .", "index": 44704, "is_good_english": "y", "is_pos_ok": true, "is_lemma_ok": true, "is_parse_ok": "y"}
+{"timestamp": "2025-03-17T15:35:50.137246", "index": 122337, "sentence": "yes there's a little guy named mike in monsters inc you're right .", "is_good_english": "t"}
+{"timestamp": "2025-03-17T15:35:53.078331", "index": 110977, "sentence": "i'm putting what's left in this bag into this jar so that the ants can't get it .", "is_good_english": "t"}
+{"timestamp": "2025-03-17T15:35:56.525169", "index": 92330, "sentence": "you're not saying big are you ?", "is_good_english": "t"}
+{"timestamp": "2025-03-17T15:36:35.126737", "sentence": "it has to drill something mama .", "index": 16541, "is_good_english": "y", "is_pos_ok": true, "is_lemma_ok": true, "is_parse_ok": "n"}
+{"timestamp": "2025-03-17T15:36:37.788923", "index": 67300, "sentence": "i'll get it started .", "is_good_english": "t"}
+{"timestamp": "2025-03-17T15:36:43.343015", "index": 173995, "sentence": "dog bones .", "is_good_english": "m"}
+{"timestamp": "2025-03-17T15:36:45.959769", "index": 32923, "sentence": "happy halloween .", "is_good_english": "m"}
+{"timestamp": "2025-03-17T15:36:49.027074", "index": 76740, "sentence": "no anne's not even around .", "is_good_english": "t"}
+{"timestamp": "2025-03-17T15:37:18.438924", "sentence": "do you want to see some more pictures ?", "index": 50489, "is_good_english": "y", "is_pos_ok": true, "is_lemma_ok": true, "is_parse_ok": "y"}
+{"timestamp": "2025-03-17T15:37:31.238881", "sentence": "read it again .", "index": 85318, "is_good_english": "y", "is_pos_ok": true, "is_lemma_ok": true, "is_parse_ok": "y"}
+{"timestamp": "2025-03-17T15:37:46.833416", "sentence": "get away kalie .", "index": 17100, "is_good_english": "y", "is_pos_ok": true, "is_lemma_ok": true, "is_parse_ok": "y"}
+{"timestamp": "2025-03-17T15:37:59.211646", "sentence": "you can wear them .", "index": 110692, "is_good_english": "y", "is_pos_ok": true, "is_lemma_ok": true, "is_parse_ok": "y"}
+{"timestamp": "2025-03-17T15:38:02.176310", "index": 8614, "sentence": "oh what's that ?", "is_good_english": "t"}
+{"timestamp": "2025-03-17T15:38:13.153653", "index": 114345, "sentence": "they roll in mud right which is wet dirt they roll in mud .", "is_good_english": "p"}
+{"timestamp": "2025-03-17T15:38:25.090173", "sentence": "eat the box .", "index": 110473, "is_good_english": "y", "is_pos_ok": true, "is_lemma_ok": true, "is_parse_ok": "y"}
+{"timestamp": "2025-03-17T15:38:33.890311", "index": 161492, "sentence": "she can go use the telephone .", "is_good_english": "g"}
+{"timestamp": "2025-03-17T15:38:36.070455", "index": 56118, "sentence": "opens up ?", "is_good_english": "m"}
+{"timestamp": "2025-03-17T15:38:55.711599", "sentence": "did you almost fall over !", "index": 23108, "is_good_english": "y", "is_pos_ok": true, "is_lemma_ok": true, "is_parse_ok": "y"}
+{"timestamp": "2025-03-17T15:39:11.361291", "sentence": "did you hear an airplane .", "index": 27317, "is_good_english": "y", "is_pos_ok": true, "is_lemma_ok": true, "is_parse_ok": "y"}
+{"timestamp": "2025-03-17T15:39:15.612498", "index": 146142, "sentence": "get them over to the front that's right .", "is_good_english": "t"}
+{"timestamp": "2025-03-17T15:39:53.753815", "sentence": "where do you think he wants to go ?", "index": 66485, "is_good_english": "y", "is_pos_ok": true, "is_lemma_ok": true, "is_parse_ok": "y"}
+{"timestamp": "2025-03-17T15:40:02.222428", "index": 17564, "sentence": "is the kittie inny ?", "is_good_english": "m"}
+{"timestamp": "2025-03-17T15:40:05.754632", "index": 154023, "sentence": "that's nice isn't that pretty ?", "is_good_english": "t"}
+{"timestamp": "2025-03-17T15:40:11.353065", "index": 13729, "sentence": "what is this a bunny ?", "is_good_english": "p"}
+{"timestamp": "2025-03-17T15:40:18.629431", "index": 90370, "sentence": "you wanna nurse ?", "is_good_english": "g"}
+{"timestamp": "2025-03-17T15:40:22.002092", "index": 42489, "sentence": "they're singing ?", "is_good_english": "t"}
+{"timestamp": "2025-03-17T15:40:24.338254", "index": 198641, "sentence": "what's your monkey's name nat ?", "is_good_english": "t"}
+{"timestamp": "2025-03-17T15:40:57.822864", "sentence": "you are good ?", "index": 193834, "is_good_english": "y", "is_pos_ok": true, "is_lemma_ok": true, "is_parse_ok": "y"}
+{"timestamp": "2025-03-17T15:41:04.905745", "index": 5263, "sentence": "well he's not getting a chance is he because somebody's always right there doing it for him .", "is_good_english": "p"}
+{"timestamp": "2025-03-17T15:41:11.701991", "index": 49115, "sentence": "up there see all the people ?", "is_good_english": "p"}
+{"timestamp": "2025-03-17T15:41:27.528030", "sentence": "like that .", "index": 75334, "is_good_english": "y", "is_pos_ok": true, "is_lemma_ok": true, "is_parse_ok": "y"}
+{"timestamp": "2025-03-17T15:41:30.800326", "index": 2314, "sentence": "so these aren't washed ?", "is_good_english": "t"}
+{"timestamp": "2025-03-17T15:41:33.703603", "index": 175323, "sentence": "which baby ?", "is_good_english": "m"}
+{"timestamp": "2025-03-17T15:41:44.806592", "sentence": "you were hungry .", "index": 118222, "is_good_english": "y", "is_pos_ok": true, "is_lemma_ok": true, "is_parse_ok": "y"}
+{"timestamp": "2025-03-17T15:41:47.270831", "index": 198390, "sentence": "who's otto ?", "is_good_english": "t"}
+{"timestamp": "2025-03-17T15:42:05.931151", "sentence": "is your thumb that big ?", "index": 201884, "is_good_english": "y", "is_pos_ok": true, "is_lemma_ok": true, "is_parse_ok": "y"}
+{"timestamp": "2025-03-17T15:42:08.852755", "index": 93572, "sentence": "that's one thing we'll make .", "is_good_english": "t"}
+{"timestamp": "2025-03-17T15:42:26.944273", "sentence": "say hello .", "index": 5804, "is_good_english": "y", "is_pos_ok": true, "is_lemma_ok": true, "is_parse_ok": "p"}
+{"timestamp": "2025-03-17T15:42:42.509852", "sentence": "how many eyes does he have ?", "index": 112356, "is_good_english": "y", "is_pos_ok": true, "is_lemma_ok": true, "is_parse_ok": "y"}
