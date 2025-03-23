@@ -2,6 +2,7 @@
 Utilities for working with dependency parse as graphs.
 """
 
+from typing import Any
 import networkx as nx
 import matplotlib.pyplot as plt
 import numpy as np
@@ -32,6 +33,46 @@ def create_parse_graph(parse: Parse):
         },
     )
     return g
+
+def add_attr_to_graph(
+    graph_: nx.DiGraph,
+    **attrs: list[Any],
+):
+    """
+    Add attributes to the graph.
+
+    Args:
+        graph_ (nx.DiGraph): The graph to add attributes to.
+        **attrs (dict[str, list[Any]]): The attributes to add.
+
+    Returns:
+        nx.DiGraph: The graph with the attributes added.
+    """
+    for k, v in attrs.items():
+        nx.set_node_attributes(graph_, {i + 1: {k: v[i]} for i in range(len(v))})
+
+    return graph_
+
+def inject_pos_to_graph(
+    graph_: nx.DiGraph,
+    pos: list[str],
+):
+    """
+    Inject the POS tags into the graph as node labels and node attributes.
+
+    Args:
+        graph_ (nx.DiGraph): The graph to inject the POS tags into.
+        pos (list[str]): The list of POS tags.
+
+    Returns:
+        nx.DiGraph: The graph with the POS tags injected.
+    """
+    for i, data in graph_.nodes.data():
+        if i > 0:
+            data["label"] += f"\n{pos[i - 1]}"
+            data["pos"] = pos[i - 1]
+
+    return graph_
 
 
 def draw_parse_graph(graph: nx.DiGraph):
