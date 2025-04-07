@@ -11,6 +11,7 @@ dependencies = [
     "numpy>=2",
     "polars>=1.23.0",
     "python-dotenv>=1.0.1",
+    "regex>=2024.11.6",
     "rich>=13.9.4",
     "seaborn>=0.13.2",
     "statsmodels>=0.14.4",
@@ -30,7 +31,7 @@ requires = ["setuptools", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [tool.uv.sources]
-supar = { git = "https://github.com/yzhangcs/parser", rev = "v1.1.4" }
+supar = { git = "https://github.com/yzhangcs/parser", rev = "bebdd350e034c517cd5b71185e056503290164fa" } 
 torch = [
   { index = "torch-cpu", marker = "sys_platform == 'darwin'"},
   { index = "torch-cu121", marker = "sys_platform == 'linux'"},
