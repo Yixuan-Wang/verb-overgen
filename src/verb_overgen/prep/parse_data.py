@@ -2,6 +2,7 @@ from functools import partial
 from os import environ
 from typing import Any
 import polars as pl
+import regex
 from supar import Parser
 import torch
 import warnings
@@ -17,7 +18,7 @@ PARSER = Parser.load("dep-biaffine-roberta-en")
 DATA_PATH_BASE = environ["DATA_PATH_BASE"]
 dataset = pl.read_parquet(f"{DATA_PATH_BASE}/babylm/aochildes.parquet")
 
-BATCH_SIZE = 32
+BATCH_SIZE = 64
 
 
 torch.cuda.set_device("cuda:0")
@@ -26,10 +27,25 @@ torch.cuda.set_device("cuda:0")
 warnings.filterwarnings("ignore")
 
 
+def parse_preprocess(sentence: str) -> str:
+    """
+    Preprocess a sentence to make the parser happy.
+    The parser is trained on PTB/train.conllx.
+
+    Rules:
+        - Add a whitespace before 's, 'm, 're, 've, 'll, 'd and specifically, n't.
+    """
+
+    sentence = regex.sub(r"(?<!\s)('(?:s|m|re|ve|ll|d))", r" \g<1>", sentence)
+    sentence = regex.sub(r"(?<!\s)n't", r" n't", sentence)
+
+    return sentence
+
 def parse(input: pl.Series) -> list[Parse]:
     global PARSER
 
     input = input.to_list()  # type: ignore
+    input = [parse_preprocess(s) for s in input]  # type: ignore    
     parsed: Any = PARSER.predict(input, lang="en", prob=True, verbose=False)  # type: ignore
 
     # parsed.sentences is a list of such dictionaries.
