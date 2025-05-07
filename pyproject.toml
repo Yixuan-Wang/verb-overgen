@@ -7,6 +7,7 @@ requires-python = ">=3.11"
 dependencies = [
     "apfel",
     "fire>=0.7.0",
+    "loguru>=0.7.3",
     "matplotlib>=3.10.0",
     "numpy>=2",
     "polars>=1.23.0",
@@ -24,6 +25,9 @@ prep = [
     "nltk>=3.9.1",
     "spacy>=3.8.4",
     "supar",
+]
+train = [
+    "wandb>=0.19.10",
 ]
 
 [build-system]
@@ -58,5 +62,8 @@ dev = [
 
 [tool.ruff]
 lint.extend-select = ["ISC", "COM818"]
-lint.ignore = ["E741"]
+lint.ignore = ["E741", "F821"]
 lint.flake8-implicit-str-concat.allow-multiline = false
+
+[tool.pyright]
+reportRedeclaration = false
