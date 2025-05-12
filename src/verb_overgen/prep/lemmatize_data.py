@@ -13,9 +13,7 @@ lemmatize_dtype = pl.Struct({
 def main(path: str):
     dataset = pl.read_parquet(path)
 
-    dataset_nontrivial = dataset.filter(pl.col("parse").is_not_null())
-
-    dataset_lemma = dataset_nontrivial.pipe(register_workload_on_df).select(
+    dataset_lemma = dataset.pipe(register_workload_on_df).select(
         pl.col("index"),
         pl.col("parse").struct.field("word").map_elements(report_progress(vec_to_lemma), lemmatize_dtype).struct.unnest(),
     )
