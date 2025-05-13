@@ -369,6 +369,14 @@ wheels = [
 ]
 
 [[package]]
+name = "en-core-web-md"
+version = "3.8.0"
+source = { url = "https://github.com/explosion/spacy-models/releases/download/en_core_web_md-3.8.0/en_core_web_md-3.8.0-py3-none-any.whl" }
+wheels = [
+    { url = "https://github.com/explosion/spacy-models/releases/download/en_core_web_md-3.8.0/en_core_web_md-3.8.0-py3-none-any.whl", hash = "sha256:5e6329fe3fecedb1d1a02c3ea2172ee0fede6cea6e4aefb6a02d832dba78a310" },
+]
+
+[[package]]
 name = "executing"
 version = "2.2.0"
 source = { registry = "https://pypi.org/simple" }
@@ -2466,6 +2474,7 @@ dependencies = [
 
 [package.optional-dependencies]
 prep = [
+    { name = "en-core-web-md" },
     { name = "nltk" },
     { name = "spacy" },
     { name = "supar" },
@@ -2485,6 +2494,7 @@ dev = [
 [package.metadata]
 requires-dist = [
     { name = "apfel", git = "https://github.com/Yixuan-Wang/apfel.git?tag=v0.1.0" },
+    { name = "en-core-web-md", marker = "extra == 'prep'", url = "https://github.com/explosion/spacy-models/releases/download/en_core_web_md-3.8.0/en_core_web_md-3.8.0-py3-none-any.whl" },
     { name = "fire", specifier = ">=0.7.0" },
     { name = "loguru", specifier = ">=0.7.3" },
     { name = "matplotlib", specifier = ">=3.10.0" },

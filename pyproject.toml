@@ -21,11 +21,7 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-prep = [
-    "nltk>=3.9.1",
-    "spacy>=3.8.4",
-    "supar",
-]
+prep = ["en-core-web-md", "nltk>=3.9.1", "spacy>=3.8.4", "supar"]
 train = [
     "wandb>=0.19.10",
 ]
@@ -35,12 +31,13 @@ requires = ["setuptools", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [tool.uv.sources]
-supar = { git = "https://github.com/yzhangcs/parser", rev = "bebdd350e034c517cd5b71185e056503290164fa" } 
+supar = { git = "https://github.com/yzhangcs/parser", rev = "bebdd350e034c517cd5b71185e056503290164fa" }
 torch = [
-  { index = "torch-cpu", marker = "sys_platform == 'darwin'"},
-  { index = "torch-cu121", marker = "sys_platform == 'linux'"},
+    { index = "torch-cpu", marker = "sys_platform == 'darwin'" },
+    { index = "torch-cu121", marker = "sys_platform == 'linux'" },
 ]
 apfel = { git = "https://github.com/Yixuan-Wang/apfel.git", tag = "v0.1.0" }
+en-core-web-md = { url = "https://github.com/explosion/spacy-models/releases/download/en_core_web_md-3.8.0/en_core_web_md-3.8.0-py3-none-any.whl" }
 
 [[tool.uv.index]]
 name = "torch-cpu"
