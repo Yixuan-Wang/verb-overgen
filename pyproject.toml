@@ -23,6 +23,8 @@ dependencies = [
 [project.optional-dependencies]
 prep = ["en-core-web-md", "nltk>=3.9.1", "spacy>=3.8.4", "supar"]
 train = [
+    "protobuf>=6.30.0",
+    "tokenizer>=3.4.5",
     "wandb>=0.19.10",
 ]
 

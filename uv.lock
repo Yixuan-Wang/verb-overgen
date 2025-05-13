@@ -2217,6 +2217,15 @@ wheels = [
 ]
 
 [[package]]
+name = "tokenizer"
+version = "3.4.5"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/7d/82/61617f1896c38fdecaef900ff72e505aa5c7c7d0b0e5d105c34887a2824f/tokenizer-3.4.5.tar.gz", hash = "sha256:a0cba65787bf7e933a6dd9a5d12677f1fafc7bee3e51d415f3204b0f698f2920", size = 153302 }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/64/b6/7566ceee18cc293ab75122598b73ca7ddb0f4265836f2525ada569d81155/tokenizer-3.4.5-py3-none-any.whl", hash = "sha256:edda11760f47787c761a27f4e1ce731a1fdccd7f2a3597a0bf6b01596448da25", size = 112770 },
+]
+
+[[package]]
 name = "tokenizers"
 version = "0.21.0"
 source = { registry = "https://pypi.org/simple" }
@@ -2480,6 +2489,8 @@ prep = [
     { name = "supar" },
 ]
 train = [
+    { name = "protobuf" },
+    { name = "tokenizer" },
     { name = "wandb" },
 ]
 
@@ -2501,6 +2512,7 @@ requires-dist = [
     { name = "nltk", marker = "extra == 'prep'", specifier = ">=3.9.1" },
     { name = "numpy", specifier = ">=2" },
     { name = "polars", specifier = ">=1.23.0" },
+    { name = "protobuf", marker = "extra == 'train'", specifier = ">=6.30.0" },
     { name = "python-dotenv", specifier = ">=1.0.1" },
     { name = "regex", specifier = ">=2024.11.6" },
     { name = "rich", specifier = ">=13.9.4" },
@@ -2508,6 +2520,7 @@ requires-dist = [
     { name = "spacy", marker = "extra == 'prep'", specifier = ">=3.8.4" },
     { name = "statsmodels", specifier = ">=0.14.4" },
     { name = "supar", marker = "extra == 'prep'", git = "https://github.com/yzhangcs/parser?rev=bebdd350e034c517cd5b71185e056503290164fa" },
+    { name = "tokenizer", marker = "extra == 'train'", specifier = ">=3.4.5" },
     { name = "torch", marker = "sys_platform != 'darwin' and sys_platform != 'linux'" },
     { name = "torch", marker = "sys_platform == 'darwin'", index = "https://download.pytorch.org/whl/cpu" },
     { name = "torch", marker = "sys_platform == 'linux'", index = "https://download.pytorch.org/whl/cu121" },
