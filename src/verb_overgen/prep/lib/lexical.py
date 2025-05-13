@@ -2,9 +2,10 @@
 Functions that inject linguistic lexical information into the data.
 """
 
+
+import regex
 import spacy
 from spacy.tokens import Doc 
-from functools import partial
 from typing_extensions import deprecated
 
 from apfel import unimplemented
@@ -22,6 +23,20 @@ def to_lemma(word: str, pos: str):
 @Lazy
 def spacy_pipeline():
     return spacy.load("en_core_web_md")
+
+
+def fix_spacing(sentence: str) -> str:
+    """
+    Preprocess a sentence to fix spacing issues with apostrophes.
+
+    Rules:
+        - Add a whitespace before 's, 'm, 're, 've, 'll, 'd and specifically, n't.
+    """
+
+    sentence = regex.sub(r"(?<!\s)('(?:s|m|re|ve|ll|d))", r" \g<1>", sentence)
+    sentence = regex.sub(r"(?<!\s)n't", r" n't", sentence)
+
+    return sentence
 
 def vec_to_lemma(word: list[str]):
     """

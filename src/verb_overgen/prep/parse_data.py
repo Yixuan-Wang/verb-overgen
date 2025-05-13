@@ -2,11 +2,11 @@ from functools import partial
 from os import environ
 from typing import Any
 import polars as pl
-import regex
 from supar import Parser
 import torch
 import warnings
 
+from verb_overgen.prep.lib.lexical import fix_spacing
 from verb_overgen.util.log_util import register_workload_on_df, report_progress
 import verb_overgen.util.pl_util as pl_util
 
@@ -26,27 +26,15 @@ torch.cuda.set_device("cuda:0")
 # Trap all warnings
 warnings.filterwarnings("ignore")
 
-
-def parse_preprocess(sentence: str) -> str:
-    """
-    Preprocess a sentence to make the parser happy.
-    The parser is trained on PTB/train.conllx.
-
-    Rules:
-        - Add a whitespace before 's, 'm, 're, 've, 'll, 'd and specifically, n't.
-    """
-
-    sentence = regex.sub(r"(?<!\s)('(?:s|m|re|ve|ll|d))", r" \g<1>", sentence)
-    sentence = regex.sub(r"(?<!\s)n't", r" n't", sentence)
-
-    return sentence
-
 def parse(input: pl.Series) -> list[Parse]:
+    """
+    The parser is trained on PTB/train.conllx.
+    """
+
     global PARSER
 
-    input = input.to_list()  # type: ignore
-    input = [parse_preprocess(s) for s in input]  # type: ignore    
-    parsed: Any = PARSER.predict(input, lang="en", prob=True, verbose=False)  # type: ignore
+    input_fixed = [fix_spacing(s) for s in input.to_list()]    
+    parsed: Any = PARSER.predict(input_fixed, lang="en", prob=True, verbose=False)e
 
     # parsed.sentences is a list of such dictionaries.
     return [
