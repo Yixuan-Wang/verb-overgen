@@ -36,7 +36,7 @@ build-backend = "setuptools.build_meta"
 supar = { git = "https://github.com/yzhangcs/parser", rev = "bebdd350e034c517cd5b71185e056503290164fa" }
 torch = [
     { index = "torch-cpu", marker = "sys_platform == 'darwin'" },
-    { index = "torch-cu121", marker = "sys_platform == 'linux'" },
+    { index = "torch-cu128", marker = "sys_platform == 'linux'" },
 ]
 apfel = { git = "https://github.com/Yixuan-Wang/apfel.git", tag = "v0.1.0" }
 en-core-web-md = { url = "https://github.com/explosion/spacy-models/releases/download/en_core_web_md-3.8.0/en_core_web_md-3.8.0-py3-none-any.whl" }
@@ -49,6 +49,11 @@ explicit = true
 [[tool.uv.index]]
 name = "torch-cu121"
 url = "https://download.pytorch.org/whl/cu121"
+explicit = true
+
+[[tool.uv.index]]
+name = "torch-cu128"
+url = "https://download.pytorch.org/whl/cu128"
 explicit = true
 
 [dependency-groups]
@@ -66,3 +71,4 @@ lint.flake8-implicit-str-concat.allow-multiline = false
 
 [tool.pyright]
 reportRedeclaration = false
+enableTypeIgnoreComments = true
