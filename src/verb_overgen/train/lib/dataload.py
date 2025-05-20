@@ -134,6 +134,15 @@ class Dataloader:
 
         return plan
 
+    def batch_count(self) -> int:
+        """
+        Return the number of batches in the dataloader.
+        """
+        if self.dataset_src.height % self.batch_size == 0:
+            return self.dataset_src.height // self.batch_size
+        else:
+            return self.dataset_src.height // self.batch_size + 1
+
     def __len__(self) -> int:
         """
         Return the number of data points in the dataloader, before batching.
@@ -182,6 +191,12 @@ class DataloaderIter:
             raise ValueError("Dataloader is not set.")
 
         self.batch_count_total = self.batch_plan.height
+
+    def __len__(self) -> int:
+        """
+        Return the number of batches in the iterator.
+        """
+        return self.batch_count_total
 
     def reset(self) -> None:
         """

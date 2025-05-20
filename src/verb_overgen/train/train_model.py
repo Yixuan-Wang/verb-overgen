@@ -1,6 +1,6 @@
 from itertools import islice
 import os
-from typing import Any
+from typing import Any, cast
 import ipdb
 from loguru import logger
 import numpy as np
@@ -10,7 +10,6 @@ import torch.nn.functional as F
 from collections.abc import Iterator
 from apfel.container.once import Lazy, Once
 import polars as pl
-from rich.progress import track
 import wandb
 from apfel.container.maybe import Maybe
 
@@ -18,11 +17,14 @@ from dataclasses import dataclass, field
 
 import verb_overgen.train.lib.dataload as dataload
 from verb_overgen.util import rand_util
+from verb_overgen.util.log_util import catch, span, track
 
 HF_CHECKPOINT = "openai-community/gpt2"
 
+
+
 MODEL: Lazy[hf.GPT2LMHeadModel] = Lazy(lambda: hf.GPT2LMHeadModel(hf.AutoConfig.from_pretrained(HF_CHECKPOINT)))
-TOKENIZER: Lazy[hf.GPT2TokenizerFast] = Lazy(lambda: hf.AutoTokenizer.from_pretrained(HF_CHECKPOINT))  # type: ignore
+TOKENIZER: Lazy[hf.GPT2TokenizerFast] = Lazy(lambda: hf.AutoTokenizer.from_pretrained(f"{os.environ['DATA_PATH_BASE']}/tokenizer/0513/gpt2_aochildes_bpe_tokenizer--20250513T025639"))  # type: ignore
 
 @Lazy[Iterator[np.uint32]]
 def GLOBAL_RAND_GEN():
@@ -38,9 +40,9 @@ DEVICE: Once[torch.device] = Once()
 
 @Lazy[pl.DataFrame]
 def DATASET():
-    dataset = pl.read_parquet(f"{os.environ['DATA_PATH_BASE']}/babylm/20250323T140740.aochildes_parsed.parquet")
+    dataset = pl.read_parquet(f"{os.environ['DATA_PATH_BASE']}/v2/0323/20250323T140740.aochildes_parsed.20250512T101328.lemma.parquet")
     dataset = dataset.with_columns(
-        tokenized=pl.col("text").map_elements(TOKENIZER(), return_dtype=pl.Object)  # type: ignore
+        tokenized=pl.col("lemma").list.join(" ").map_elements(cast(Any, TOKENIZER()), pl.Object)
     )
 
     return dataset
@@ -89,7 +91,7 @@ class Trainer():
             project="25-verb-overgen",
             # Track hyperparameters and run metadata.
             config={
-                "learning_rate": hyperparam.learning_rate,
+                "learning_rate": self.hyper.learning_rate,
             },
         )
 
@@ -110,7 +112,7 @@ class Trainer():
         state.token_count += data.input_ids.numel()
 
         if state.batch_count % 500 == 0:
-            logger.info("devating model...")
+            logger.info("Evaluating on dev set")
             dev_loss = self.dev(Maybe.just(state))
         else:
             dev_loss = Maybe.nothing()
@@ -164,17 +166,22 @@ class Trainer():
         state = TrainState()
         self.on_train_start(state)
 
-        for epoch in range(self.hyper.num_epochs):
-            state.epoch_count = epoch
-            state.batch_count = 0
-            self.on_train_epoch_start(state)
-            for batch in track(self.dataloader):
-                batch = self.on_train_step_start(state, batch)
-                output = self.train_step(state, batch)
-                _ = self.on_train_step_end(state, batch, output)
-                state.batch_count += 1
+        total_batch_count_per_epoch = self.dataloader.batch_count()
 
-            self.on_train_epoch_end(state)
+        with track(total_batch_count_per_epoch * self.hyper.num_epochs) as pbar:
+            for epoch in range(self.hyper.num_epochs):
+                state.epoch_count = epoch
+                state.batch_count = 0
+                self.on_train_epoch_start(state)
+                for batch in self.dataloader:
+                    pbar.set_description(f"Epoch {state.epoch_count}/{self.hyper.num_epochs} - Batch {state.batch_count}/{total_batch_count_per_epoch}", refresh=False)
+                    batch = self.on_train_step_start(state, batch)
+                    output = self.train_step(state, batch)
+                    _ = self.on_train_step_end(state, batch, output)
+                    state.batch_count += 1
+                    pbar.update(1)
+
+                self.on_train_epoch_end(state)
 
         self.on_train_end(state)
         return
@@ -205,13 +212,14 @@ class Trainer():
         return Maybe.just(dev_loss.mean().item())
 
 
-if __name__ == "__main__":
-    with ipdb.launch_ipdb_on_exception():
-        from verb_overgen.train.lib.dataload import Dataloader
 
-        DEVICE.set(torch.device("cuda").__enter__())
+@catch
+def main():
+    from verb_overgen.train.lib.dataload import Dataloader
 
-        span("load-data")
+    DEVICE.set(torch.device("cuda").__enter__())
+
+    with span("load-data"):
         hyperparam = Hyperparam(
             batch_size=32,
             num_epochs=5,
@@ -233,10 +241,10 @@ if __name__ == "__main__":
             seed_batch_shuffle=42,
         )
 
-        span("load-model")
+    with span("load-model"):
         model = MODEL()
 
-        span("load-trainer")
+    with span("load-trainer"):
         trainer = Trainer(
             model=model,
             hyper=hyperparam,
@@ -244,5 +252,13 @@ if __name__ == "__main__":
             dataloader_dev=Maybe.just(dataloader_dev),
         )
 
-        span("train")
-        trainer.train()
+    trainer.train()
+
+    with span("save-model"):
+        assert wandb.run is not None
+        assert wandb.run.name is not None
+        run_name: str = wandb.run.name
+        model.save_pretrained(f"{os.environ['DATA_PATH_BASE']}/lm/{run_name}")
+
+if __name__ == "__main__":
+    main()

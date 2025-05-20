@@ -13,15 +13,12 @@ load_dotenv()
 
 # Reset the default logger
 logger.remove()
-logger.add(
+from verb_overgen.util.log_util import make_default_handler, LOGURU_STDERR_HANDLER  # noqa: E402
+stderr_handler = logger.add(
     sys.stderr,
-    filter={
-        "": "INFO",
-        "verb_overgen": "DEBUG" if sys.stdin.isatty() else "INFO",
-        "transformers": "WARNING",
-    }
+    **make_default_handler(),
 )
-
+LOGURU_STDERR_HANDLER.insert(stderr_handler)
 
 # Sink warnings to loguru
 showwarning_ = warnings.showwarning
@@ -55,22 +52,6 @@ logging.basicConfig(handlers=[InterceptHandler()], level=0, force=True)
 
 # Configure logger according to debug mode
 if sys.stdin.isatty():
-    from rich.logging import RichHandler
-
-    logger.configure(
-        handlers=[{"sink": RichHandler(markup=True), "format": "{message}"}]
-    )
-    os.environ["LOGURU_LEVEL"] = "DEBUG"
     logger.debug("Running in interactive mode.")
 else:
     logger.debug("Running in non-interactive mode.")
-
-# Capture using ipdb
-if sys.stdin.isatty():
-    import ipdb
-    ipdb.launch_ipdb_on_exception().__enter__()
-
-# Add own `span` function to global scope
-from verb_overgen.util.log_util import span # noqa: E402
-import builtins # noqa: E402
-builtins.span = span # type: ignore

@@ -1,23 +1,59 @@
-from venv import logger
+from contextlib import contextmanager
+import datetime
+import io
 from apfel.container.maybe import Maybe
+from loguru import logger
 import polars as pl
-import rich
-from rich.progress import Progress
-from rich.status import Status
-from rich.console import Console
-from string import Template
+import tqdm
 
-import atexit
+from collections.abc import Callable, Generator
+from functools import partial, wraps
+from os import environ
 import sys
-from typing import Any, TypeVar
-from functools import wraps
-from collections.abc import Callable
+from typing import Any, TypeVar, cast
 
+
+IS_INTERACTIVE: bool = sys.stdin.isatty()
+LOGURU_STDERR_HANDLER: Maybe[int] = Maybe.nothing()
+
+if not IS_INTERACTIVE:
+    if "TQDM_MININTERVAL" not in environ:
+        environ["TQDM_MININTERVAL"] = "5"
+
+def make_default_handler() -> Any:
+    """
+    Generate the configuration for the default logger.
+    """
+    return {
+        "filter": {
+            "": "INFO",
+            "verb_overgen": "DEBUG" if IS_INTERACTIVE else "INFO",
+            "transformers": "WARNING",
+        }
+    }
+
+@contextmanager
+def use_tqdm_logging_handler(pbar: tqdm.tqdm):
+    global LOGURU_STDERR_HANDLER
+
+    has_stderr_handler = LOGURU_STDERR_HANDLER.is_just()
+    try:
+        LOGURU_STDERR_HANDLER.take().map(logger.remove)
+        handler = logger.add(
+            partial(pbar.write, end=""),
+            **make_default_handler() | {
+                "colorize": IS_INTERACTIVE,
+            },
+        )
+        LOGURU_STDERR_HANDLER.insert(handler)
+        yield
+    finally:
+        LOGURU_STDERR_HANDLER.take().map(logger.remove)
+        if has_stderr_handler:
+            LOGURU_STDERR_HANDLER.insert(logger.add(sys.stderr, **make_default_handler()))
 
 WORKLOAD = 0
 """The total workload to be processed."""
-
-
 def register_workload_on_df(df: pl.DataFrame):
     """
     Register the workload as the number of rows in the DataFrame.
@@ -34,11 +70,9 @@ def register_workload_on_df(df: pl.DataFrame):
 
 
 F = TypeVar("F", bound=Callable)
-
-
 def report_progress(func: F, advance: int = 1, description: str | None = None) -> F:
     """
-    Decorator to print a `rich` progress bar while the decorated function is being mapped over
+    Decorator to print a `tqdm` progress bar while the decorated function is being mapped over
     the registered workload.
     Each call will advance the progress bar.
 
@@ -52,134 +86,103 @@ def report_progress(func: F, advance: int = 1, description: str | None = None) -
     """
     global WORKLOAD
 
-    progress = Progress().__enter__()
-    progress_task = progress.add_task(description or "", total=WORKLOAD)
+    progress = tqdm.tqdm(None, total=WORKLOAD, desc=description)
+    progress_ctx = use_tqdm_logging_handler(progress)
+    progress_ctx.__enter__()
 
     @wraps(func)
     def wrapper(*args, **kwargs):
         result = func(*args, **kwargs)
-        progress.update(progress_task, advance=advance)
-        if progress.finished:
-            progress.__exit__(None, None, None)
+        progress.update(advance)
+        if progress.n >= WORKLOAD:
+            progress.close()
+            progress_ctx.__exit__(None, None, None)
+
         return result
 
     return wrapper  # type: ignore
 
+def timedelta_to_iso8601(td: datetime.timedelta) -> str:
+    """Convert a datetime.timedelta to an ISO 8601 duration string."""
+    seconds = td.total_seconds()
+    days, seconds = divmod(seconds, 86400)
+    hours, seconds = divmod(seconds, 3600)
+    minutes, seconds = divmod(seconds, 60)
+    
+    with io.StringIO() as buf:
+        buf.write("P")
 
-IS_INTERACTIVE: bool = sys.stdin.isatty()
+        if days:
+            buf.write(f"{int(days)}D")
 
-CONSOLE: Console = rich.get_console()
-CONSOLE.stderr = True
+        if hours or minutes or seconds:
+            buf.write("T")
+            if hours:
+                buf.write(f"{int(hours)}H")
+            if minutes:
+                buf.write(f"{int(minutes)}M")
+            if seconds:
+                # Handle potential floating point seconds
+                if seconds.is_integer():
+                    buf.write(f"{int(seconds)}S")
+                else:
+                    buf.write(f"{seconds}S")
 
+        result = buf.getvalue()
 
-def span(shorthand: str):
+    # Edge case: zero duration
+    if result == "P":
+        result = "PT0S"
+
+    return result
+
+@contextmanager
+def span(description: str):
     """
     Record a span.
-    If running in interactive mode, the span will be recorded as a progress bar.
-    If running in non-interactive mode, the span will be recorded as a log message.
     """
-    ...
 
+    logger_span = logger.opt(depth=2)
+    logger_span.info(description)
+    time_start = datetime.datetime.now()
+    try:
+        yield
+    finally:
+        time_end = datetime.datetime.now()
+        time_diff = time_end - time_start
 
-STATUS = Maybe[Status].nothing()
+        logger_span.success(f"FINISHED {description} in {timedelta_to_iso8601(time_diff)}", extra={"elapsed": time_diff})
 
+@contextmanager
+def track(workload: Any) -> Generator[tqdm.tqdm, None, None]:
+    global WORKLOAD
 
-@atexit.register
-def clear_status():
-    global STATUS
-    STATUS.map(lambda s: s.stop())  # type: ignore
-
-
-def interactive_span(shorthand: str):
-    global CONSOLE, STATUS
-
-    clear_status()
-    CONSOLE.clear_live()
-    STATUS.replace(
-        CONSOLE.status(
-            shorthand,
-        ).__enter__()
-    )
-
-def non_interactive_span(shorthand: str):
-    logger.info("Entering span: %s", shorthand)
-
-
-if False:
-    interactive_span.__doc__ = span.__doc__
-    span = interactive_span
-else:
-    non_interactive_span.__doc__ = span.__doc__
-    span = non_interactive_span
-
-class ProgressBar:
-    """
-    Create a progress bar or log message depending on the environment.
-    If running in interactive mode, the progress bar will be displayed.
-    If running in non-interactive mode, the progress bar will be logged as a message.
-    """
-    def __init__(self,
-        total: int,
-        debounce: int | None = None,
-        message: str = "Running task..."
-    ):
+    if isinstance(workload, int):
         pass
+    elif hasattr(workload, "__len__"):
+        workload = len(workload)
+    elif isinstance(WORKLOAD, int):
+        workload = WORKLOAD
+    else:
+        workload = None
+    workload: int | None
+    
+    pbar = tqdm.tqdm(total=workload)
 
-if IS_INTERACTIVE:
-    class ProgressBar:
-        def __init__(self,
-            total: int,
-            debounce: int | None = None,
-            message: str = "Running task...",
-            extras: dict[str, Any] = {}
-        ):
-            return
-            rich.get_console().clear_live()
-            self.progress = Progress()
-            self.extras = extras
-            self.extras["total"] = total
+    with (
+        use_tqdm_logging_handler(pbar),
+        pbar as pbar,
+    ):
+        yield pbar
 
-            self.message = Template(message)
-            message_0 = self.message.safe_substitute(self.extras,step=0, total=total)
-            self.task = self.progress.add_task(message_0, total=total)
-            self.progress.start()
+def catch(func: F) -> F:
+    if not IS_INTERACTIVE:
+        return func
+    else:
+        try:
+            import ipdb
+        except ImportError:
+            logger.warning("ipdb not found, will not catch exceptions")
+            return func
 
-        def update(self, advance: int = 1, extras: dict[str, Any] = {}):
-            return
-            self.extras.update(extras)
-            message = self.message.safe_substitute(self.extras, step=self.progress.tasks[0].completed + advance)
-            self.progress.update(self.task, advance=advance, description=message)
-
-        def stop(self):
-            return
-            self.progress.stop()
-else:
-    class ProgressBar:
-        def __init__(self,
-            total: int,
-            debounce: int | None = None,
-            message: str = "Running task...",
-            extras: dict[str, Any] = {}
-        ):
-            self.total = total
-            self.debounce = debounce or 1
-            self.debounce_step = 0
-            self.message = Template(message)
-            self.step = 0
-            self.extras = extras
-            self.extras["total"] = total
-
-        def update(self, advance: int = 1, extras: dict[str, Any] = {}):
-            self.step += advance
-            self.debounce_step += advance
-            self.extras.update(extras)
-
-            if self.debounce_step < self.debounce:
-                return
-            
-            message = self.message.safe_substitute(self.extras, step=self.step, total=self.total)
-            logger.info(message, extra={"step": self.step, "total": self.total})
-            self.debounce_step = 0
-
-        def stop(self):
-            pass
+        return ipdb.iex(func)
