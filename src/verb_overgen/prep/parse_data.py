@@ -34,7 +34,7 @@ def parse(input: pl.Series) -> list[Parse]:
     global PARSER
 
     input_fixed = [fix_spacing(s) for s in input.to_list()]    
-    parsed: Any = PARSER.predict(input_fixed, lang="en", prob=True, verbose=False)e
+    parsed: Any = PARSER.predict(input_fixed, lang="en", prob=True, verbose=False)
 
     # parsed.sentences is a list of such dictionaries.
     return [
