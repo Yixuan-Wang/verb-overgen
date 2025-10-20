@@ -72,3 +72,5 @@ lint.flake8-implicit-str-concat.allow-multiline = false
 [tool.pyright]
 reportRedeclaration = false
 enableTypeIgnoreComments = true
+
+extraPaths = ["../references/PyChildes"]
