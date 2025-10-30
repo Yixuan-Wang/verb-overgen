@@ -6,7 +6,7 @@ import polars as pl
 from apfel.container.once import Lazy
 
 from tokenizers import Tokenizer
-from tokenizers.models import BPE
+from tokenizers.models import BPE, WordLevel
 from tokenizers.pre_tokenizers import Whitespace
 from tokenizers.trainers import BpeTrainer
 

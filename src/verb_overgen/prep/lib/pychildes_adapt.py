@@ -27,5 +27,4 @@ def get_sentence(lemma_expr: pl.Expr) -> pl.Expr:
     Returns:
         pl.Expr: A `str` expression representing the sentence.
     """
-    return lemma_expr.list.join(" ").str.replace(r"_", " ")
-
+    return lemma_expr.list.join(" ").str.replace_all(pl.lit(r'_'), pl.lit(' '))
