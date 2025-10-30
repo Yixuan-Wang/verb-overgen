@@ -1,64 +1,124 @@
-import json
+"""Script for training a tokenizer on the PyChildes dataset.
+"""
+
 from pathlib import Path
-from typing import Final
-from loguru import logger
+from typing import Final, no_type_check
+
 import polars as pl
-from apfel.container.once import Lazy
 
-from tokenizers import Tokenizer
-from tokenizers.models import BPE, WordLevel
-from tokenizers.pre_tokenizers import Whitespace
-from tokenizers.trainers import BpeTrainer
+from verb_overgen.prep.lib.pychildes_adapt import PYCHILDES_LEMMA, filter_valid_lemmas, get_sentence
 
-import os
+SPECIAL_TOKEN: Final = {
+    "unk_token": "<unk>",
+}
 
-from verb_overgen.common.tokenize import BOS_TOKEN, EOS_TOKEN, PAD_TOKEN, UNK_TOKEN
+VOCAB_SIZE: Final = 4096
 
-@Lazy[pl.DataFrame]
-def DATASET():
-    dataset = pl.read_parquet(f"{os.environ['DATA_PATH_BASE']}/v2/0323/20250323T140740.aochildes_parsed.20250512T101328.lemma.parquet")
-    return dataset
+@no_type_check
+def init_empty_tokenizer_bpe(
+    vocab_size: int,
+):
+    import tokenizers
+    from tokenizers import models, normalizers, pre_tokenizers, trainers
 
-VOCAB_SIZE: Final = 8192
+    tokenizer = tokenizers.Tokenizer(
+        models.BPE(unk_token=SPECIAL_TOKEN["unk_token"])
+    )
 
-def train_bpe(dataset: pl.DataFrame) -> Tokenizer:
-    corpus_tokenizer =  dataset.filter(pl.col("split") != "test").select(
-        text=pl.col("lemma").list.join(" ")
-    ).to_series()
+    tokenizer.add_special_tokens(list(SPECIAL_TOKEN.values()))
 
-    special_token = [
-        PAD_TOKEN, # 0
-        BOS_TOKEN, # 1
-        EOS_TOKEN, # 2
-        UNK_TOKEN, # 3
-    ]
+    tokenizer.normalizer = normalizers.Sequence([
+        normalizers.Lowercase(),
+    ])
 
-    tokenizer = Tokenizer(BPE(unk_token=UNK_TOKEN)) # type: ignore
-    tokenizer.pre_tokenizer = Whitespace() # type: ignore
-    trainer = BpeTrainer(special_tokens=special_token, vocab_size=VOCAB_SIZE) # type: ignore
-    tokenizer.train_from_iterator(corpus_tokenizer, trainer=trainer) # type: ignore
+    tokenizer.pre_tokenizer = pre_tokenizers.Whitespace()
+
+    trainer = trainers.BpeTrainer(
+        vocab_size=vocab_size,
+        special_tokens=list(SPECIAL_TOKEN.values()),
+    )
+
+    return tokenizer, trainer
+
+@no_type_check
+def init_empty_tokenizer_wordlevel(
+    vocab_size: int,
+):
+    import tokenizers
+    from tokenizers import models, normalizers, pre_tokenizers, trainers
+
+    tokenizer = tokenizers.Tokenizer(
+        models.WordLevel(unk_token=SPECIAL_TOKEN["unk_token"])
+    )
+
+    tokenizer.add_special_tokens(list(SPECIAL_TOKEN.values()))
+
+    tokenizer.normalizer = normalizers.Sequence([
+        normalizers.Lowercase(),
+    ])
+
+    tokenizer.pre_tokenizer = pre_tokenizers.Whitespace()
+
+    trainer = trainers.WordLevelTrainer(
+        vocab_size=vocab_size,
+        special_tokens=list(SPECIAL_TOKEN.values()),
+    )
+
+    return tokenizer, trainer
+
+
+def train_tokenizer_on_pychildes(
+    dataset: pl.DataFrame | pl.LazyFrame,
+    vocab_size: int = VOCAB_SIZE,
+    kind: str = "wordlevel",
+):
+    lemma_expr = PYCHILDES_LEMMA
+
+    dataset = dataset.lazy().filter(filter_valid_lemmas(lemma_expr))
+
+    dataset_sent = (
+        dataset
+        .with_columns(
+            content_raw="content",
+            content=get_sentence(lemma_expr)
+        )
+    )
+
+    match kind:
+        case "bpe":
+            tokenizer, trainer = init_empty_tokenizer_bpe(vocab_size=vocab_size)
+        case "wordlevel":
+            tokenizer, trainer = init_empty_tokenizer_wordlevel(vocab_size=int(1e5)) # A large vocab size for wordlevel, ignoring a vocab limit
+        case _:
+            raise ValueError(f"Unknown tokenizer kind: {kind}")
+
+    sent = dataset_sent.select("content").collect().to_series()
+
+    tokenizer.train_from_iterator(
+        iter(sent),
+        length=len(sent),
+        trainer=trainer,
+    )
 
     return tokenizer
 
+def main(
+    input_path: str,
+    output_path: str,
+    kind: str,
+):
+    output_path: Path = Path(output_path)
+    output_path.mkdir(parents=True, exist_ok=True)
+    output_file = output_path / "tokenizer.json"    
 
-# trainer = hftk_trainer.BpeTrainer(
-#     dataset
-# )
+    input_path: Path = Path(input_path)
+    dataset = pl.read_parquet(input_path)
+    tokenizer = train_tokenizer_on_pychildes(dataset, vocab_size=VOCAB_SIZE, kind=kind)
+    tokenizer.save(output_file.as_posix())
 
 if __name__ == "__main__":
-    now = __import__("datetime").datetime.now().strftime(r"%Y%m%dT%H%M%S")
-    logger.info(f"Training tokenizer at {now}")
-
-    tokenizer = train_bpe(DATASET())
-
-    tokenizer_path = Path(f"{os.environ['DATA_PATH_BASE']}/tokenizer/0513/gpt2_aochildes_bpe_tokenizer--{now}")
-    tokenizer_path.mkdir(parents=True, exist_ok=True)
-    tokenizer.save((tokenizer_path / "tokenizer.json").as_posix())
-
-    with open((tokenizer_path / "tokenizer_config.json").as_posix(), "w") as f:
-        json.dump({
-            "bos_token": BOS_TOKEN,
-            "eos_token": EOS_TOKEN,
-            "pad_token": PAD_TOKEN,
-            "unk_token": UNK_TOKEN,
-        }, f)
+    main(
+        input_path="/u501/y4466wan/projects/2025/verb-overgen/data/childes-gold/test-251010T0422/merged.test.parquet/pychildes-morphosyntax.20251024.parquet",
+        output_path="/u501/y4466wan/projects/2025/verb-overgen/data/tokenizer/1024-wordlevel",
+        kind="wordlevel"
+    )
