@@ -1,1 +1,1 @@
-import verb_overgen.util.startup  # noqa: F401
+import verb_overgen.common.startup  # noqa: F401

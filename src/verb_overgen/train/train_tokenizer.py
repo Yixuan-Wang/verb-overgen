@@ -6,10 +6,14 @@ from typing import Final, no_type_check
 
 import polars as pl
 
+from verb_overgen.common.tokenize import BOS_TOKEN, EOS_TOKEN, UNK_TOKEN
 from verb_overgen.prep.lib.pychildes_adapt import PYCHILDES_LEMMA, filter_valid_lemmas, get_sentence
 
 SPECIAL_TOKEN: Final = {
-    "unk_token": "<unk>",
+    "pad_token": "<pad>",
+    "bos_token": BOS_TOKEN,
+    "eos_token": EOS_TOKEN,
+    "unk_token": UNK_TOKEN,
 }
 
 VOCAB_SIZE: Final = 4096
