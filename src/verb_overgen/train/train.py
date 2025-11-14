@@ -1,11 +1,10 @@
 from pathlib import Path
-from typing import TYPE_CHECKING, TypedDict
+from typing import TYPE_CHECKING
 
-import einops as eo
-import hydra
 from jaxtyping import Float, Int
 import lightning as ptl
 from lightning.pytorch.loggers import WandbLogger
+from lightning.pytorch.callbacks import ModelCheckpoint
 import torch
 import torch.nn as nn
 import torch.nn.functional as nnf
@@ -21,14 +20,15 @@ from verb_overgen.train.dataloader import DatasetPyChildes, DataPyChildes
 if TYPE_CHECKING:
     from lightning.pytorch.utilities.types import LRSchedulerConfigType, OptimizerLRSchedulerConfig
 
-MAX_LEN: int = 512
+# Actual max length is 132
+MAX_LEN: int = 160
 
 class VerbOvergenTrainModule(ptl.LightningModule):
-    def __init__(self, model, tokenizer):
+    def __init__(self, model_config):
         super().__init__()
-        self.model: nn.Module = model
-        self.tokenizer = tokenizer
-        self.pad_token_id = self.tokenizer._tokenizer.token_to_id(PAD_TOKEN)
+        self.save_hyperparameters()
+
+        self.model = hf.GPT2LMHeadModel(model_config)
 
     @override
     def configure_optimizers(self):
@@ -60,7 +60,7 @@ class VerbOvergenTrainModule(ptl.LightningModule):
         input_ids: Int[Tensor, "batch max_len"] = nnf.pad(
             input_ids,
             pad=(0, MAX_LEN - input_ids.size(1)),
-            value=self.pad_token_id,
+            value=self.model.config.pad_token_id,
         )
 
         attention_mask: Int[Tensor, "batch max_len"] = nnf.pad(
@@ -77,8 +77,7 @@ class VerbOvergenTrainModule(ptl.LightningModule):
 
         return ret
 
-    @override
-    def training_step(self, batch: DataPyChildes, batch_idx):
+    def training_step(self, batch: DataPyChildes, batch_idx: int):
         seq_length = batch["seq_length"]
         self.log("train/seq_length_mean", seq_length.float().mean())
         self.log("train/seq_length_std", seq_length.float().std())
@@ -90,7 +89,7 @@ class VerbOvergenTrainModule(ptl.LightningModule):
         input_ids: Int[Tensor, "batch max_len"] = batch["input_ids"]
         attention_mask: Int[Tensor, "batch max_len"] = batch["attention_mask"]
         labels: Int[Tensor, "batch max_len"] = torch.where(
-            input_ids == self.pad_token_id,
+            input_ids == self.model.config.pad_token_id,
             -100,
             input_ids,
         )
@@ -114,7 +113,7 @@ class VerbOvergenTrainModule(ptl.LightningModule):
         input_ids: Int[Tensor, "batch max_len"] = batch["input_ids"]
         attention_mask: Int[Tensor, "batch max_len"] = batch["attention_mask"]
         labels: Int[Tensor, "batch max_len"] = torch.where(
-            input_ids == self.pad_token_id,
+            input_ids == self.model.config.pad_token_id,
             -100,
             input_ids,
         )
@@ -138,61 +137,65 @@ if __name__ == "__main__":
     )
 
     random_gen = torch.Generator().manual_seed(42)
-    valid_size = 32768
+    valid_size = 4096
     dataset_train, dataset_val = torch.utils.data.random_split(
         dataset,
         [len(dataset) - valid_size, valid_size],
         generator=random_gen,
     )
 
-    
-
     dataloader_train = torch.utils.data.DataLoader(
         dataset_train,
-        batch_size=16,
+        batch_size=64,
         shuffle=True,
         collate_fn=dataset.collate_fn,
         # num_workers=15,
     )
     dataloader_val = torch.utils.data.DataLoader(
         dataset_val,
-        batch_size=32,
+        batch_size=128,
         shuffle=False,
         collate_fn=dataset.collate_fn,
     )
 
-
-
-    model = hf.GPT2LMHeadModel(config=hf.GPT2Config(
+    model_config = hf.GPT2Config(
         vocab_size=tokenizer.vocab_size,
         n_positions=MAX_LEN,
         n_ctx=MAX_LEN,
         n_embd=768,
-        n_layer=12,
-        n_head=12,
+        n_layer=8,
+        n_head=8,
         pad_token_id=tokenizer._tokenizer.token_to_id(PAD_TOKEN),
         bos_token_id=tokenizer._tokenizer.token_to_id(BOS_TOKEN),
         eos_token_id=tokenizer._tokenizer.token_to_id(EOS_TOKEN),
-    ))
+    )
 
     train_module = VerbOvergenTrainModule(
-        model=model,
-        tokenizer=tokenizer,
+        model_config=model_config,
     )
 
     logger = WandbLogger(
         project="25-verb-overgen",
-        log_model="all",
+        save_dir="data",
     )
+
+    wandb_run = logger.experiment
+    wandb_run_name: str = wandb_run.name
+
+    # TODO: Enable checkpointing
+    # checkpoint_callback = ModelCheckpoint(
+    #     dirpath="/u501/y4466wan/projects/2025/verb-overgen/data/train/gpt2",
+    #     filename="verb-overgen_gpt2-a6cbd4_{step}.ckpt",
+    #     every_n_train_steps=10000,
+    # )
 
     trainer = ptl.Trainer(
         max_epochs=1,
-        max_steps=400_00,
         accelerator="gpu",
         devices=1,
         gradient_clip_val=1.0,
-        log_every_n_steps=1,
-        val_check_interval=100,
+        log_every_n_steps=100,
+        val_check_interval=1000,
         logger=logger,
         default_root_dir="/u501/y4466wan/projects/2025/verb-overgen/data/train/gpt2"
     )
@@ -201,6 +204,10 @@ if __name__ == "__main__":
         train_module,
         train_dataloaders=dataloader_train,
         val_dataloaders=dataloader_val,
+    )
+
+    trainer.save_checkpoint(
+        "/u501/y4466wan/projects/2025/verb-overgen/data/train/gpt2/verb-overgen-gpt2-a6cbd4_{}_final.pth".format(wandb_run_name or "run"),
     )
 
     logger.experiment.finish()
