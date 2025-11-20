@@ -5,6 +5,7 @@ description = "Add your description here"
 readme = "README.md"
 requires-python = ">=3.11"
 dependencies = [
+    "altair>=6.0.0",
     "apfel",
     "einops>=0.8.1",
     "fire>=0.7.0",
