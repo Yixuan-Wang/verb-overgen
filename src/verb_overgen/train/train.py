@@ -28,7 +28,8 @@ class VerbOvergenTrainModule(ptl.LightningModule):
         super().__init__()
         self.save_hyperparameters()
 
-        self.model = hf.GPT2LMHeadModel(model_config)
+        # self.model = hf.GPT2LMHeadModel(model_config)
+        self.model = hf.OPTForCausalLM(model_config)
 
     @override
     def configure_optimizers(self):
@@ -158,13 +159,26 @@ if __name__ == "__main__":
         collate_fn=dataset.collate_fn,
     )
 
-    model_config = hf.GPT2Config(
+    # model_config = hf.GPT2Config(
+    #     vocab_size=tokenizer.vocab_size,
+    #     n_positions=MAX_LEN,
+    #     n_ctx=MAX_LEN,
+    #     n_embd=768,
+    #     n_layer=8,
+    #     n_head=8,
+    #     #n_inner=4 * 768,
+    #     pad_token_id=tokenizer._tokenizer.token_to_id(PAD_TOKEN),
+    #     bos_token_id=tokenizer._tokenizer.token_to_id(BOS_TOKEN),
+    #     eos_token_id=tokenizer._tokenizer.token_to_id(EOS_TOKEN),
+    # )
+
+    model_config = hf.OPTConfig(
         vocab_size=tokenizer.vocab_size,
-        n_positions=MAX_LEN,
-        n_ctx=MAX_LEN,
-        n_embd=768,
-        n_layer=8,
-        n_head=8,
+        hidden_size=768,
+        max_position_embeddings=MAX_LEN,
+        num_hidden_layers=8,
+        num_attention_heads=8,
+        # ffn_dim = 4 * hidden_size,
         pad_token_id=tokenizer._tokenizer.token_to_id(PAD_TOKEN),
         bos_token_id=tokenizer._tokenizer.token_to_id(BOS_TOKEN),
         eos_token_id=tokenizer._tokenizer.token_to_id(EOS_TOKEN),
@@ -197,7 +211,7 @@ if __name__ == "__main__":
         log_every_n_steps=100,
         val_check_interval=1000,
         logger=logger,
-        default_root_dir="/u501/y4466wan/projects/2025/verb-overgen/data/train/gpt2"
+        default_root_dir="/u501/y4466wan/projects/2025/verb-overgen/data/train/opt"
     )
 
     trainer.fit(
@@ -207,7 +221,7 @@ if __name__ == "__main__":
     )
 
     trainer.save_checkpoint(
-        "/u501/y4466wan/projects/2025/verb-overgen/data/train/gpt2/verb-overgen-gpt2-a6cbd4_{}_final.pth".format(wandb_run_name or "run"),
+        "/u501/y4466wan/projects/2025/verb-overgen/data/train/opt/verb-overgen-opt-a6cbd4_{}_final.pth".format(wandb_run_name or "run"),
     )
 
     logger.experiment.finish()
