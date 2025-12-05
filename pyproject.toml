@@ -25,7 +25,7 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-prep = ["en-core-web-md", "nltk>=3.9.1", "spacy>=3.8.4", "supar"]
+prep = ["en-core-web-trf", "nltk>=3.9.1", "spacy>=3.8.4", "supar"]
 train = [
     "protobuf>=6.30.0",
     "tokenizer>=3.4.5",
@@ -44,7 +44,7 @@ torch = [
     { index = "torch-cu128", marker = "sys_platform == 'linux'" },
 ]
 apfel = { git = "https://github.com/Yixuan-Wang/apfel.git", tag = "v0.1.0" }
-en-core-web-md = { url = "https://github.com/explosion/spacy-models/releases/download/en_core_web_md-3.8.0/en_core_web_md-3.8.0-py3-none-any.whl" }
+en-core-web-trf = { url = "https://github.com/explosion/spacy-models/releases/download/en_core_web_trf-3.8.0/en_core_web_trf-3.8.0-py3-none-any.whl" }
 
 [[tool.uv.index]]
 name = "torch-cpu"
