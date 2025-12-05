@@ -12,7 +12,7 @@ import einops as eo
 from verb_overgen.common.tokenize import BOS_TOKEN, EOS_TOKEN, PAD_TOKEN
 from verb_overgen.train.train import VerbOvergenTrainModule
 
-INPUT_PATH = "/u501/y4466wan/projects/2025/verb-overgen/data/zorro/zorro_babyberta_lemmatized.parquet"
+INPUT_PATH = "/u501/y4466wan/projects/2025/verb-overgen/data/scamp/scamp-plausible_spacy.parquet"
 TOKENIZER_PATH = "/u501/y4466wan/projects/2025/verb-overgen/data/tokenizer/1024-wordlevel/tokenizer.json"
 
 def load_zorro(
@@ -22,14 +22,12 @@ def load_zorro(
 
     dataset_zorro = pl.scan_parquet(input_path)
     dataset_zorro = dataset_zorro.with_columns(
-        pl.col("file_line_idx").sub(1).floordiv(2).alias("pair_idx"),
-        pl.col("file_line_idx").mod(2).cast(pl.Boolean).not_().alias("is_grammatical"),
         pl.col("lemma").list.join(" ").str.strip_chars().alias("sentence"),
     )
 
-    dataset_zorro_pair = dataset_zorro.group_by("file_name", "pair_idx").agg(
-        pl.col("sentence", "sentence_raw", "lemma", "pos").filter(pl.col("is_grammatical")).first().name.suffix("_grammatical"),
-        pl.col("sentence", "sentence_raw", "lemma", "pos").filter(~pl.col("is_grammatical")).first().name.suffix("_ungrammatical"),
+    dataset_zorro_pair = dataset_zorro.group_by("file_name", "file_line_idx").agg(
+        pl.col("sentence", "sentence_raw", "lemma", "pos_ud").filter(pl.col("is_grammatical")).first().name.suffix("_grammatical"),
+        pl.col("sentence", "sentence_raw", "lemma", "pos_ud").filter(~pl.col("is_grammatical")).first().name.suffix("_ungrammatical"),
     )
 
     # Ignore pure morphological alternations for now
@@ -143,9 +141,9 @@ if __name__ == "__main__":
         pl.struct("sentence_grammatical", "sentence_ungrammatical").map_batches(
             eval_zorro,
         ).alias("prob"),
-    ).select(pl.all().exclude("row_index").explode())
+    ).select(pl.all().exclude("row_index").explode()).sort(["file_name", "file_line_idx"])
 
-    dataset_result.write_parquet("/u501/y4466wan/projects/2025/verb-overgen/data/zorro/eval/zorro-eval_silver-salad-4_final.parquet")    
+    dataset_result.write_parquet("/u501/y4466wan/projects/2025/verb-overgen/data/scamp/eval/scamp-eval_silver-salad-4_final.parquet")    
 
     # print(zorro_data.collect().head(5).with_columns(
     #     pl.struct(["lemma_grammatical", "lemma_ungrammatical"]).map_batches()

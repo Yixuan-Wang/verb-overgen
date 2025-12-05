@@ -1,6 +1,6 @@
 import marimo
 
-__generated_with = "0.18.1"
+__generated_with = "0.18.2"
 app = marimo.App(width="medium")
 
 
@@ -15,7 +15,8 @@ def _():
 
 @app.cell
 def _(pl):
-    dataset = pl.read_parquet("/u501/y4466wan/projects/2025/verb-overgen/data/zorro/eval/zorro-eval_silver-salad-4_final.parquet").unnest("prob")
+    # dataset = pl.read_parquet("/u501/y4466wan/projects/2025/verb-overgen/data/zorro/eval/zorro-eval_silver-salad-4_final.parquet").unnest("prob")
+    dataset = pl.read_parquet("/u501/y4466wan/projects/2025/verb-overgen/data/scamp/eval/scamp-eval_silver-salad-4_final.parquet").unnest("prob")
     return (dataset,)
 
 
