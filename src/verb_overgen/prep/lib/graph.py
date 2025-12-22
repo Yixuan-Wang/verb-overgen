@@ -75,7 +75,12 @@ def inject_pos_to_graph(
     return graph_
 
 
-def draw_parse_graph(graph: nx.DiGraph):
+def draw_parse_graph(
+    graph: nx.DiGraph,
+    *,
+    highlight_node = lambda g, n, d: (None, None),
+    highlight_edge = lambda g, u, v, d: (None, None),
+):
     """
     Draw a `nx.DiGraph` object representing a parse on a matplotlib figure.
 
@@ -88,69 +93,42 @@ def draw_parse_graph(graph: nx.DiGraph):
     # Position all nodes in a line (y=0) at integer x-coordinates
     pos = {i: (i, 0) for i in range(len(graph.nodes()))}
 # Draw the nodes, specifying the node label from the 'label' attribute
-    fig, ax = plt.subplots(figsize=(12, 6))
+    fig, ax = plt.subplots(figsize=(max(len(graph.nodes()), 12), 6))
     nx.draw_networkx_nodes(graph, pos, node_size=800, node_color="none")  # Border color
-    nx.draw_networkx_labels(
+    _labels = nx.draw_networkx_labels(
         graph,
         pos,
         ax=ax,
         labels={i: graph.nodes[i]["label"] for i in graph.nodes()},
         font_size=10,
+        font_family=plt.rcParams["font.family"][0] if plt.rcParams["font.family"] else "sans-serif"
     )
 
-    # Draw edges with an arc style
+    for i, t in _labels.items():
+        weight, color = highlight_node(graph, i, graph.nodes[i])
+        if color is not None:
+            t.set_color(color)
+        if weight is not None:
+            t.set_fontweight(weight)
+
+
+
+    # # Draw edges with an arc style
     arc_rad = 0.3  # Controls curvature of the edges
-    nx.draw_networkx_edges(
+    edge_arcs = nx.draw_networkx_edges(
         graph, pos, arrowstyle="->", arrowsize=15, connectionstyle=f"arc3,rad={arc_rad}"
     )
 
-    # Prepare the edge labels
     edge_labels = {(u, v): d["label"] for u, v, d in graph.edges(data=True)}
 
-    # Function to get the midpoint of the 'arc3' style at t = 0.5
-    def arc3_midpoint(x1, y1, x2, y2, rad):
-        """
-        Return the coordinates of the midpoint (t=0.5) of the
-        quadratic Bézier curve drawn by 'arc3, rad=...'.
-        """
-        dx = x2 - x1
-        dy = y2 - y1
-
-        length = np.hypot(dx, dy)
-        if length == 0:
-            # Avoid division by zero if both nodes are at the same position
-            return x1, y1
-
-        # Unit vector along the line from (x1, y1) to (x2, y2)
-        ux, uy = dx / length, dy / length
-
-        # A perpendicular unit vector
-        # (For rad > 0, arc is "above" the line; for rad < 0, "below".)
-        px, py = -uy, ux
-
-        # Midpoint of the straight line
-        mx, my = (x1 + x2) / 2.0, (y1 + y2) / 2.0
-
-        # Distance to shift the control point from the midpoint
-        # arc_rad is effectively the fraction of the line length used as the "height"
-        shift = rad * length / 2.0
-
-        # Control point
-        cx, cy = mx + shift * px, my + shift * py
-
-        # Quadratic Bezier at t=0.5: B(0.5) = 0.25*P0 + 0.5*P1 + 0.25*P2
-        mid_x = 0.25 * x1 + 0.5 * cx + 0.25 * x2
-        mid_y = - (0.25 * y1 + 0.5 * cy + 0.25 * y2)
-
-        return mid_x, mid_y
-
     # Draw edge labels (dependency types) at the center of the curved edge
-    for (u, v), dep_label in edge_labels.items():
-        x1, y1 = pos[u]
-        x2, y2 = pos[v]
+    for ((u, v), dep_label), arc in zip(edge_labels.items(), edge_arcs): # type: ignore
+        path = arc.get_path()
+        mid_x = (path.vertices[0, 0] + 2 * path.vertices[1, 0] + path.vertices[2, 0]) / 4
+        mid_y = (path.vertices[0, 1] + 2 * path.vertices[1, 1] + path.vertices[2, 1]) / 4
 
-        # Compute the true midpoint of the Arc3 at t = 0.5
-        mid_x, mid_y = arc3_midpoint(x1, y1, x2, y2, arc_rad)
+        d = graph.edges[u, v]
+        weight, color = highlight_edge(graph, u, v, d)
 
         ax.text(
             mid_x,
@@ -158,9 +136,10 @@ def draw_parse_graph(graph: nx.DiGraph):
             dep_label,
             ha="center",
             va="center",
-            color="red",
-            fontsize=10,
-            bbox=dict(boxstyle="round,pad=0.2", fc="white", ec="black", alpha=0.7),
+            color=color if color is not None else "black",
+            fontsize=8,
+            fontweight=weight if weight is not None else "normal",
+            bbox=dict(boxstyle="round,pad=0.2", fc="white", ec="white", alpha=0.95),
         )
 
     ax.axis("off")
