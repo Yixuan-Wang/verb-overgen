@@ -6,8 +6,7 @@ Functions that inject linguistic lexical information into the data.
 from typing import TypedDict
 from typing import TypedDict
 import regex
-import spacy
-from spacy.tokens import Doc 
+
 from typing_extensions import deprecated
 import numpy as np
 
@@ -25,6 +24,7 @@ def to_lemma(word: str, pos: str):
 
 @Lazy
 def spacy_pipeline():
+    import spacy
     return spacy.load("en_core_web_trf")
 
 
@@ -45,6 +45,8 @@ def vec_to_lemma(word: list[str]):
     """
     Convert a vector of words to a vector of lemmas.
     """
+    from spacy.tokens import Doc
+
     nlp = spacy_pipeline()
     doc = Doc(nlp.vocab, words=word)
     doc = nlp(doc)
@@ -71,6 +73,7 @@ def run_spacy(words: list[str]) -> SpacyMetadata:
     Returns:
         Doc: The processed spacy Doc object.
     """
+    from spacy.tokens import Doc
     nlp = spacy_pipeline()
     doc = Doc(nlp.vocab, words=words)
     doc = nlp(doc)

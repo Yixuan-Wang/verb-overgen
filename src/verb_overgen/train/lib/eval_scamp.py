@@ -1,4 +1,5 @@
 from dataclasses import dataclass
+from re import I
 from typing import cast
 import ipdb
 import polars as pl
@@ -125,7 +126,8 @@ if __name__ == "__main__":
     BATCH_SIZE = 128
 
     
-    module = VerbOvergenTrainModule.load_from_checkpoint("/u501/y4466wan/projects/2025/verb-overgen/data/train/gpt2/verb-overgen-gpt2-a6cbd4_silver-salad-4_final.pth", map_location="cuda")
+    module = VerbOvergenTrainModule.load_from_checkpoint("/u501/y4466wan/projects/2025/verb-overgen/data/train/opt/verb-overgen-opt-a6cbd4_colorful-morning-5_final.pth", map_location="cuda")
+
     model = module.model
 
     eval_zorro = EvalZorro(
@@ -143,7 +145,7 @@ if __name__ == "__main__":
         ).alias("prob"),
     ).select(pl.all().exclude("row_index").explode()).sort(["file_name", "file_line_idx"])
 
-    dataset_result.write_parquet("/u501/y4466wan/projects/2025/verb-overgen/data/scamp/eval/scamp-eval_silver-salad-4_final.parquet")    
+    dataset_result.write_parquet("/u501/y4466wan/projects/2025/verb-overgen/data/scamp/eval/scamp-eval_colorful-morning-5_final.parquet")
 
     # print(zorro_data.collect().head(5).with_columns(
     #     pl.struct(["lemma_grammatical", "lemma_ungrammatical"]).map_batches()
