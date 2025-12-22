@@ -16,7 +16,10 @@ def _():
 @app.cell
 def _(pl):
     # dataset = pl.read_parquet("/u501/y4466wan/projects/2025/verb-overgen/data/zorro/eval/zorro-eval_silver-salad-4_final.parquet").unnest("prob")
-    dataset = pl.read_parquet("/u501/y4466wan/projects/2025/verb-overgen/data/scamp/eval/scamp-eval_silver-salad-4_final.parquet").unnest("prob")
+    dataset = pl.read_parquet("/u501/y4466wan/projects/2025/verb-overgen/data/scamp/eval/scamp-eval_*_final.parquet", include_file_paths="result_path").select(
+        pl.col("result_path").str.extract(r"scamp-eval_(.+?)_final\.parquet").alias("model_name"),
+        pl.all().exclude("result_path"),
+    ).unnest("prob")
     return (dataset,)
 
 
@@ -27,20 +30,26 @@ def _(dataset):
 
 
 @app.cell
-def _(alt, dataset, pl):
-    df_accuracy = dataset.group_by("file_name").agg(
+def _(alt, dataset, mo, pl):
+    df_accuracy = dataset.group_by("model_name", "file_name").agg(
         pl.col("prob_grammatical").gt(pl.col("prob_ungrammatical")).mean().alias("accuracy"),
         pl.count().alias("num_samples"),
     ).sort("accuracy", descending=True)
 
-    alt.Chart(df_accuracy).mark_bar().encode(
+    chart = alt.Chart(df_accuracy).mark_bar().encode(
         x=alt.X("accuracy:Q"),
         y=alt.Y("file_name:O", sort="-x"),
-        color=alt.Color("accuracy:Q", scale=alt.Scale(scheme="greens")),
-        tooltip=[alt.Tooltip("file_name:O"), alt.Tooltip("accuracy:Q").format(".2%")],
+        color=alt.Color("model_name:N"),
+        yOffset="model_name:N",
+        tooltip=["model_name:N", alt.Tooltip("file_name:O"), alt.Tooltip("accuracy:Q").format(".2%"), alt.Tooltip("num_samples:Q")],
     ).properties(
         title="Distribution of Zorro Accuracy over Files"
     )
+
+    mo.vstack([
+        dataset.group_by("model_name").agg(pl.col("prob_grammatical").gt(pl.col("prob_ungrammatical")).mean().alias("accuracy")),
+        chart,
+    ])
     return (df_accuracy,)
 
 
