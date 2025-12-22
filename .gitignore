@@ -5,6 +5,8 @@ build/
 dist/
 wheels/
 *.egg-info
+var
+__marimo__/
 
 # Virtual environments
 .venv
