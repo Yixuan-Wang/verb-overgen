@@ -8,3 +8,6 @@
 - dist/
 - wheels/
 - *.egg-info
+- var
+- data
+- __marimo__/
