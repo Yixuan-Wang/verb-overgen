@@ -1,7 +1,7 @@
 from contextlib import contextmanager
 import datetime
 import io
-from apfel.container.maybe import Maybe
+from apfel import nothing
 from loguru import logger
 import polars as pl
 import tqdm
@@ -14,7 +14,7 @@ from typing import Any, TypeVar, cast
 
 
 IS_INTERACTIVE: bool = sys.stdin.isatty()
-LOGURU_STDERR_HANDLER: Maybe[int] = Maybe.nothing()
+LOGURU_STDERR_HANDLER = nothing[int]()
 
 if not IS_INTERACTIVE:
     if "TQDM_MININTERVAL" not in environ:

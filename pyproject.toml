@@ -33,6 +33,9 @@ train = [
     "wandb>=0.19.10",
     "lightning==2.5.*",
 ]
+cluster = [
+    "ray[default,data]"
+]
 prep-sgl = [
     "ice-cup-sgl",
 ]
@@ -47,7 +50,7 @@ torch = [
     # { index = "torch-cpu", marker = "sys_platform == 'darwin'" },
     { index = "torch-cu128", marker = "sys_platform == 'linux'" },
 ]
-apfel = { git = "https://github.com/Yixuan-Wang/apfel.git", tag = "v0.1.0" }
+apfel = { git = "https://github.com/Yixuan-Wang/apfel.git", tag = "dev" }
 ice-cup-sgl = { git = "https://github.com/Yixuan-Wang/ice-cup.git", subdirectory = "packages/ice-cup-sgl", rev = "cb4bdec" }
 en-core-web-trf = { url = "https://github.com/explosion/spacy-models/releases/download/en_core_web_trf-3.8.0/en_core_web_trf-3.8.0-py3-none-any.whl" }
 
