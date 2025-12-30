@@ -85,6 +85,7 @@ lint.ignore = ["E741", "F722", "F821"]
 lint.flake8-implicit-str-concat.allow-multiline = false
 
 [tool.pyright]
+typeCheckingMode = "basic"
 reportRedeclaration = false
 enableTypeIgnoreComments = true
 
