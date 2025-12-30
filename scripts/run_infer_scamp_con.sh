@@ -9,10 +9,15 @@
 #SBATCH -o logs/slurm/slurm-%A_%a.out.txt
 #SBATCH -e logs/slurm/slurm-%A_%a.err.txt
 
-tyw tg text "start_job infer-scamp-con name=${SLURM_JOB_NAME} id=${SLURM_JOB_ID}"
+set -Eeuo pipefail
+fail() {
+  tyw tg text "fail_job name=${SLURM_JOB_NAME} id=${SLURM_JOB_ID} line=$1 time=$(date '+%Y-%m-%d %H:%M:%S')"
+}
+trap 'fail $LINENO' ERR
 
-source ./.envrc
-python -m verb_overgen.scamp_con \
-  && tyw tg text "finish_job infer-scamp-con name=${SLURM_JOB_NAME} id=${SLURM_JOB_ID}" \
-  || tyw tg text "fail_job infer-scamp-con name=${SLURM_JOB_NAME} id=${SLURM_JOB_ID}"
+tyw tg text "start_job name=${SLURM_JOB_NAME} id=${SLURM_JOB_ID} time=$(date '+%Y-%m-%d %H:%M:%S')"
 
+eval "$(direnv export bash)"
+python -m verb_overgen.scamp_con
+
+tyw tg text "finish_job name=${SLURM_JOB_NAME} id=${SLURM_JOB_ID} time=$(date '+%Y-%m-%d %H:%M:%S')"
