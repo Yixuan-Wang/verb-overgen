@@ -1,20 +1,20 @@
+"""Run LLM inference on SCAMP dataset to judge sentence naturalness."""
+
 from collections.abc import Iterator
-from typing import cast, Any
+from typing import Any, cast
 
 import orjson
 import pyarrow as pa
 import ray
-from ray.data.expressions import col
 import sglang as sgl
+from loguru import logger
+from ray.data.expressions import col
 from sglang.srt.parser.reasoning_parser import ReasoningParser
 from transformers import AutoTokenizer
-from loguru import logger
-
-
-from apfel import not_none
 
 MODEL_PATH = "/model-weights/Qwen3-32B"
 # logger.warning("Using 8B model for debugging.")
+
 
 def get_message(sentence: str | pa.StringScalar):
     return [
@@ -28,9 +28,10 @@ def get_message(sentence: str | pa.StringScalar):
 
     If the answer to any of these questions is yes, then the sentence is unnatural.
     Judge if the following space-delimited sentence is natural: `{sentence}`
-    Answer "Yes" if the sentence is natural, or "No" if it is unnatural.""".format(sentence=sentence)
+    Answer "Yes" if the sentence is natural, or "No" if it is unnatural.""".format(sentence=sentence),
         }
     ]
+
 
 # data = [
 #   "the customer had n't taught this boy .",
@@ -46,9 +47,16 @@ _DTYPE_PARSED_RESULTS = pa.struct([
     pa.field("error", pa.string()),
 ])
 
+
 class LLMInfer:
     def __init__(self, tp_size: int, max_running_requests: int):
-        self.llm = sgl.Engine(model_path=MODEL_PATH, reasoning_parser="qwen3", grammar_backend="xgrammar", tp_size=tp_size, max_running_requests=max_running_requests)
+        self.llm = sgl.Engine(
+            model_path=MODEL_PATH,
+            reasoning_parser="qwen3",
+            grammar_backend="xgrammar",
+            tp_size=tp_size,
+            max_running_requests=max_running_requests,
+        )
         self.tokenizer = AutoTokenizer.from_pretrained(MODEL_PATH)
         self.parser = ReasoningParser("qwen3")
 
@@ -70,7 +78,6 @@ class LLMInfer:
             "top_p": 0.95,
             "top_k": 20,
             "min_p": 0,
-
             "regex": r"\s*(Yes|No)",
         }
         results = self.llm.generate(prompt=input, sampling_params=sampling_params)
@@ -81,11 +88,18 @@ class LLMInfer:
             generated_text = result["text"]
             reasoning_text, text = self.parser.parse_non_stream(generated_text)
             if reasoning_text is None or text is None:
-                parsed_results.append(pa.scalar({
-                    "output_reasoning": None,
-                    "verdict": None,
-                    "error": orjson.dumps({"message": "Failed to parse LLM output", "output": generated_text}).decode()
-                }, _DTYPE_PARSED_RESULTS))
+                parsed_results.append(
+                    pa.scalar(
+                        {
+                            "output_reasoning": None,
+                            "verdict": None,
+                            "error": orjson.dumps(
+                                {"message": "Failed to parse LLM output", "output": generated_text}
+                            ).decode(),
+                        },
+                        _DTYPE_PARSED_RESULTS,
+                    )
+                )
                 continue
 
             match text.strip():
@@ -94,21 +108,29 @@ class LLMInfer:
                 case "No":
                     verdict = False
                 case _:
-                    parsed_results.append(pa.scalar({
-                        "output_reasoning": None,
-                        "verdict": None,
-                        "error": orjson.dumps({"message": "Invalid LLM output", "output": generated_text}).decode()
-                    }, _DTYPE_PARSED_RESULTS))
+                    parsed_results.append(
+                        pa.scalar(
+                            {
+                                "output_reasoning": None,
+                                "verdict": None,
+                                "error": orjson.dumps(
+                                    {"message": "Invalid LLM output", "output": generated_text}
+                                ).decode(),
+                            },
+                            _DTYPE_PARSED_RESULTS,
+                        )
+                    )
                     continue
 
-            parsed_results.append(pa.scalar({
-                "output_reasoning": reasoning_text,
-                "verdict": verdict,
-                "error": None
-            }, _DTYPE_PARSED_RESULTS))
+            parsed_results.append(
+                pa.scalar(
+                    {"output_reasoning": reasoning_text, "verdict": verdict, "error": None}, _DTYPE_PARSED_RESULTS
+                )
+            )
 
         parsed_results_array = pa.array(parsed_results, type=_DTYPE_PARSED_RESULTS)
         return table.append_column("llm_infer", parsed_results_array)
+
 
 def main():
     ray.init()
@@ -122,22 +144,19 @@ def main():
     tp_size = 2
     num_instances = int(ray.available_resources().get("GPU", 0) // tp_size)
     logger.info(f"Number of instances: {num_instances}")
-    dataset = (
-        dataset
-        .filter(expr=col("is_grammatical") == True) # noqa: E712
-        .map_batches(
-            LLMInfer, # pyright: ignore
-            fn_constructor_kwargs={"tp_size": tp_size, "max_running_requests": 1024},
-            compute=ray.data.ActorPoolStrategy(size=num_instances),
-            batch_size=1024,
-            batch_format="pyarrow",
-            num_cpus=1,
-            num_gpus=tp_size,
-            scheduling_strategy="SPREAD",
-        )
+    dataset = dataset.filter(expr=col("is_grammatical") == True).map_batches(  # noqa: E712
+        LLMInfer,  # pyright: ignore
+        fn_constructor_kwargs={"tp_size": tp_size, "max_running_requests": 1024},
+        compute=ray.data.ActorPoolStrategy(size=num_instances),
+        batch_size=1024,
+        batch_format="pyarrow",
+        num_cpus=1,
+        num_gpus=tp_size,
+        scheduling_strategy="SPREAD",
     )
 
     dataset.write_parquet("/home/tomyxw/projects/2025/verb-overgen/data/scamp/scamp-plausible-llm-infer.parquet")
+
 
 if __name__ == "__main__":
     main()

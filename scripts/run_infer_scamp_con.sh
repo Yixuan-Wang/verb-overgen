@@ -18,6 +18,6 @@ trap 'fail $LINENO' ERR
 tyw tg text "start_job name=${SLURM_JOB_NAME} id=${SLURM_JOB_ID} time=$(date '+%Y-%m-%d %H:%M:%S')"
 
 eval "$(direnv export bash)"
-python -m verb_overgen.scamp_con
+python -m verb_overgen.scamp_con.infer_scamp
 
 tyw tg text "finish_job name=${SLURM_JOB_NAME} id=${SLURM_JOB_ID} time=$(date '+%Y-%m-%d %H:%M:%S')"

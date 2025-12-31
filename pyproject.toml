@@ -34,7 +34,7 @@ train = [
     "lightning==2.5.*",
 ]
 cluster = [
-    "ray[default,data]"
+    "ray[default,data]",
 ]
 prep-sgl = [
     "ice-cup-sgl",
@@ -86,10 +86,12 @@ prep = [
 lint.extend-select = ["ISC", "COM818"]
 lint.ignore = ["E741", "F722", "F821"]
 lint.flake8-implicit-str-concat.allow-multiline = false
+line-length = 120
 
 [tool.pyright]
 typeCheckingMode = "basic"
 reportRedeclaration = false
 enableTypeIgnoreComments = true
+reportPrivateImportUsage = false
 
 extraPaths = ["../references/PyChildes"]
