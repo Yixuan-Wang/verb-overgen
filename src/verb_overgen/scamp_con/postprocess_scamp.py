@@ -26,11 +26,14 @@ dataset = dataset_roberta.join(
     how="left",
 )
 
+
 def into_expr(expr: IntoExpr) -> pl.Expr:
     return pl.Expr._from_pyexpr(parse_into_expression(expr))
 
+
 def into_exprs(*exprs: IntoExpr | Iterable[IntoExpr]) -> list[pl.Expr]:
     return list(map(pl.Expr._from_pyexpr, parse_into_list_of_expressions(*exprs)))
+
 
 # %%
 def zip_pad(*exprs: IntoExpr | Iterable[IntoExpr], pad: IntoExpr = None, pad_left: bool = False) -> list[pl.Expr]:
@@ -50,9 +53,7 @@ def zip_pad(*exprs: IntoExpr | Iterable[IntoExpr], pad: IntoExpr = None, pad_lef
     if pad_left:
         padded_exprs = [
             pl.when(expr.list.len() < len_max)
-            .then(
-                into_expr(pad).repeat_by(len_max - expr.list.len()).list.concat(expr).alias(expr.meta.output_name())
-            )
+            .then(into_expr(pad).repeat_by(len_max - expr.list.len()).list.concat(expr).alias(expr.meta.output_name()))
             .otherwise(expr)
             for expr in exprs
         ]
@@ -64,6 +65,7 @@ def zip_pad(*exprs: IntoExpr | Iterable[IntoExpr], pad: IntoExpr = None, pad_lef
             for expr in exprs
         ]
     return padded_exprs
+
 
 def zip_truncate(*exprs: IntoExpr | Iterable[IntoExpr], truncate_left: bool = False) -> list[pl.Expr]:
     """Truncate lists to the same length.
@@ -87,6 +89,7 @@ def zip_truncate(*exprs: IntoExpr | Iterable[IntoExpr], truncate_left: bool = Fa
 
     return truncated_exprs
 
+
 # %%
 def mismatch(df: pl.DataFrame, name: str) -> pl.DataFrame:
     return (
@@ -103,6 +106,7 @@ def mismatch(df: pl.DataFrame, name: str) -> pl.DataFrame:
         )
     )
 
+
 dataset_mismatch_lemma = (
     dataset.select("file_name", "file_line_idx", "is_grammatical", pl.col("roberta").struct["lemma"])
     .pivot(on="is_grammatical", values="lemma")
@@ -116,17 +120,22 @@ dataset_mismatch_word = (
 )
 
 dataset_mismatch = dataset_mismatch_lemma.join(
-    dataset_mismatch_word, on=["file_name", "file_line_idx"], coalesce=True,
+    dataset_mismatch_word,
+    on=["file_name", "file_line_idx"],
+    coalesce=True,
 )
 
 # %%
 dataset_this = dataset.join(dataset_mismatch, on=["file_name", "file_line_idx"], how="left", coalesce=True)
 
 # %%
-expr_is_lemma_ok = (pl.col("idx_lemma_mismatch") == pl.col("idx_word_mismatch")).and_(pl.col("idx_lemma_mismatch").list.len() > 0)
+expr_is_lemma_ok = (pl.col("idx_lemma_mismatch") == pl.col("idx_word_mismatch")).and_(
+    pl.col("idx_lemma_mismatch").list.len() > 0
+)
 expr_is_llm_verdict = pl.col("llm_infer").struct["verdict"].eq(True)
 
 dataset_this.with_columns(
     expr_is_lemma_ok.alias("is_lemma_ok"),
     expr_is_llm_verdict.alias("is_llm_verdict"),
+    pl.col("roberta").struct["lemma"].list.join(" ").str.strip_chars().alias("sentence"),
 ).write_parquet("./data/scamp/scamp-postprocessed.parquet")
