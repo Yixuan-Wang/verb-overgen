@@ -2,6 +2,7 @@
 Polars expressions for pattern matching on the data.
 """
 
+from collections.abc import Iterable
 import polars as pl
 
 def match_svo(parse_expr: pl.Expr):
@@ -110,9 +111,41 @@ def get_substructure(
         children_rel=children_rels,
     ).alias("substructure")
 
+def extract_verb(
+    pos: pl.Expr,
+    word: pl.Expr,
+    *,
+    target_pos: Iterable[str] = ("v", "part")
+):
+    """
+    Extract verbs from the sentence.
+
+    Args:
+        pos (pl.Expr): The POS tags of the sentence.
+        word (pl.Expr): The words (or lemmas) of the sentence.
+        target_pos (Iterable[str]): The POS tags to consider as verbs. Defaults to `("v", "part")`.
+    
+    Returns:
+        pl.Expr: The list of verbs in the sentence.
+    """
+
+    idx_is_verb = pos.list.eval(pl.element().is_in(list(target_pos)).arg_true())
+    verbs = word.list.gather(idx_is_verb)
+    return verbs
+
 def extract_periphrastic_make(
     parse: pl.Expr,
 ):
+    """
+    Extract periphrastic constructions involving *make*,
+        i.e. the children (likely verb) that is a `COMP` child of *make*.
+        
+    Args:
+        parse (pl.Expr): The parsed data. Should be evaluated to dtype `DtParse`.
+
+    Returns:
+        pl.Expr: The children that are `COMP` children of *make*. Nullable.
+    """
     word = parse.struct.field("word")
     arc = parse.struct.field("arc")
     rel = parse.struct.field("rel")
@@ -125,12 +158,6 @@ def extract_periphrastic_make(
         pl.element().eq("COMP").arg_true()
     )
     indices_comp_children = indices_children.list.gather(indices_children_comp)
-    word_comp_children = word.list.gather(indices_comp_children).list.first()
+    word_comp_children = word.list.gather(indices_comp_children)
 
-    # return pl.struct(
-    #     index_make=indices_make,
-    #     # indices_children=indices_children,
-    #     index_comp_children=indices_comp_children,
-    #     word_comp_children=word_comp_children,
-    # )
     return word_comp_children

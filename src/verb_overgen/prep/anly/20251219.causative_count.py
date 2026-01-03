@@ -21,8 +21,14 @@ def _():
 
 
 @app.cell
+def _():
+    __import__("os").chdir(__import__("os").environ["VSCODE_CWD"])
+    return
+
+
+@app.cell
 def _(pl):
-    dataset = pl.read_parquet("/home/tomyxw/Projects/2025/verb-overgen/var/pychildes-morphosyntax.20251024.parquet")
+    dataset = pl.read_parquet("./data/pychildes-morphosyntax.20251024.parquet")
 
     dataset = dataset.with_columns(
         pl.struct(
@@ -132,7 +138,7 @@ def _(
         expr_content_lemma,
         pl.col("morph").struct.field("pos").list.len().add(2).alias("count_tokens"),
         expr_content_pos,
-        pl.col("parse").pipe(extract_periphrastic_make).alias("verb_causative"),
+        pl.col("parse").pipe(extract_periphrastic_make).list.first().alias("verb_causative"),
     ).filter(
         pl.col("verb_causative").is_not_null(),
         pl.col("verb_causative").is_in(LIST_PERIPHRASTIC_CAUS_VERBS),
@@ -159,7 +165,6 @@ def _(
     ).with_columns(
             pl.col("count_periphrastic_causative").truediv(pl.col("count_is_verb")).alias("proportion_periphrastic_causative")
         )
-
     return
 
 
