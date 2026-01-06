@@ -1,3 +1,5 @@
+"""Extract features from PyChildes data and mark them within the dataset."""
+
 from collections.abc import Iterable
 import polars as pl
 

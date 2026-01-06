@@ -162,9 +162,7 @@ def _(
         left_on="lemma",
         right_on="verb_causative",
         how="left"
-    ).with_columns(
-            pl.col("count_periphrastic_causative").truediv(pl.col("count_is_verb")).alias("proportion_periphrastic_causative")
-        )
+    ).sort(["count_is_verb", "count_periphrastic_causative"], descending=True)
     return
 
 
