@@ -11,26 +11,31 @@ import numpy as np
 MODEL_PATH = "/model-weights/Qwen3-32B"
 PROMPT = """
 ### Role
-You are an expert at generating simple, child-friendly reading comprehension examples.
-
-### Inputs
-- Subject: {subject}
-- Object: {object}
-- Verb: {verb}
-- Vocabulary Bank: {noun_bank}
+You are a child literature author tasked with creating engaging and easy-to-understand texts for young children.
 
 ### Instructions
-1.  Context: Create a short scene related to a child's daily life where {subject} causes {object} to perform the action "{verb}".
-2.  Vocabulary: You may optionally incorporate words from the "Vocabulary Bank" if they fit naturally.
+1.  Object Selection: Choose an object from the vocabulary bank that fits naturally with the subject and verb.
+2.  Scene Creation:
+    - The scene should be simple and relatable for a young child.
+    - In this scene, the subject **causes** the object to perform the action described by the verb.
+    - The scene can be fictional, therefore verbs involving harm or danger can be used without real-world consequences.
 3.  Output Generation:
-    - Sentence A (The Scene): Write one short sentence describing the setup.
-    - Sentence B (The Completion): Complete the sentence: "{subject} makes {object} {verb}..."
+    - First, write a short sentence describing extra context of the action. Without it the action should still be understandable.
+    - Then write the main sentence where the subject makes the object perform the action.
 4.  Constraints:
-    - The completion for Sentence B must use 5 words or fewer.
-    - Use simple vocabulary suitable for a 5-year-old (kindergarten level).
+    - The main sentence should have the following syntactic structure: "{{subject}} makes {{object}} {{verb}}".
+      Additional modifiers are allowed, but no extra verbs are permitted in the main sentence.
+    - Both sentences should be declarative sentences, and quotes are not allowed.
 
 ### Output Format
-{subject} [Scene Description]. {subject} makes {object} {verb} [Completion].
+The output should only contain two sentences separated by a newline character. For example given subject "{subject}", verb "break", and object "vase", the output should be:
+{subject} knocks over the vase.
+{subject} makes the vase break.
+
+### Input
+- Subject: {subject}
+- Verb: {verb}
+- Object Candidates: {object_candidates}
 """
 
 expr_proportion = (pl.col("count") / pl.col("count").sum()).alias("proportion")
@@ -72,22 +77,20 @@ def generate_prompt(
     randgen_nouns = np.random.default_rng() if randgen_nouns is None else randgen_nouns
 
     while True:
-        subject, object = sample(dataset=dataset_names, n=2, randgen=randgen_names)
-        noun_bank = sample(dataset=dataset_nouns, n=15, randgen=randgen_nouns)
-        noun_bank_str = ", ".join(noun_bank)
+        subject, *object_candidates = sample(dataset=dataset_names, n=11, randgen=randgen_names)
+        object_candidates.extend(sample(dataset=dataset_nouns, n=15, randgen=randgen_nouns))
+        object_candidates_str = ", ".join(object_candidates)
 
         prompt_filled = PROMPT.format(
             subject=subject,
-            object=object,
             verb=verb,
-            noun_bank=noun_bank_str,
+            object_candidates=object_candidates_str,
         )
 
         yield {
-            "fragment_subject": subject,
-            "fragment_object": object,
-            "fragment_noun_bank": noun_bank,
             "verb": verb,
+            "fragment_subject": subject,
+            "fragment_object_candidates": object_candidates,
             "prompt": prompt_filled,
         }
 
@@ -158,7 +161,9 @@ class LLMGen:
 if __name__ == "__main__":
     dataset_names = pl.read_csv("./data/testset/gen/names.csv").with_columns(expr_proportion)
     dataset_verbs = pl.read_csv("./data/testset/gen/causative_verb_counts.csv").with_columns(expr_proportion)
-    dataset_nouns = pl.read_csv("./data/testset/gen/top_nouns.csv").with_columns(expr_proportion)
+    dataset_nouns = pl.read_csv("./data/testset/gen/top_nouns.csv").with_columns(expr_proportion).filter(
+        pl.col("lemma").str.len_chars() > 2
+    )
 
     prompt_per_verb = 75
 
@@ -194,9 +199,9 @@ if __name__ == "__main__":
         ),
         batch_size=512,
         batch_format="pyarrow",
-        num_cpus=1,
+        num_cpus=3,
         num_gpus=tp_size,
         scheduling_strategy="SPREAD",
     )
 
-    dataset.write_parquet("./data/testset/output/testset_llm_gen.parquet")
+    dataset.write_parquet("./data/testset/output/testset_llm_gen.20260108T2325.parquet")
