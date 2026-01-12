@@ -5,41 +5,19 @@ Reasons behind this addition:
 - Besides, our training uses lemmatized sentences to reduce vocabulary size and improve token reuse.
 """
 
-import polars as pl
 import pyarrow as pa
-from loguru import logger
+import polars as pl
 import ray
-import spacy
-from spacy.tokens import Doc
 
-class SpacyParser:
-    def __init__(self):
-        self.spacy_pipeline = spacy.load("en_core_web_trf", disable=["ner"])
+from src.verb_overgen.prep.lib.lexical import BaseSpacyParser
 
-    def run_spacy(self, words: list[list[str]]) -> pa.Array:
-        inputs = [Doc(self.spacy_pipeline.vocab, words=w) for w in words]
-        outputs = list(self.spacy_pipeline.pipe(inputs))
-
-        lemma = pa.array([[token.lemma_ for token in doc] for doc in outputs], pa.list_(pa.string()))
-        morph = pa.array([[str(token.morph) for token in doc] for doc in outputs], pa.list_(pa.string()))
-        dep_arc = pa.array(
-            [[(token.head.i + 1 if token.dep_ != "ROOT" else 0) for token in doc] for doc in outputs],
-            pa.list_(pa.int32()),
-        )
-        dep_rel = pa.array([[token.dep_ for token in doc] for doc in outputs], pa.list_(pa.string()))
-        pos_ud = pa.array([[token.pos_ for token in doc] for doc in outputs], pa.list_(pa.string()))
-        pos_penn = pa.array([[token.tag_ for token in doc] for doc in outputs], pa.list_(pa.string()))
-
-        return pa.StructArray.from_arrays(
-            [lemma, morph, dep_arc, dep_rel, pos_ud, pos_penn],
-            names=["lemma", "morph", "dep_arc", "dep_rel", "pos_ud", "pos_penn"],
-        )
+class SpacyParser(BaseSpacyParser):
+    """A Ray data batch mapper that adds Spacy parses to SCAMP dataset."""
 
     def __call__(self, table: pa.Table) -> pa.Table:
         list_word = table.column("list_word")
-        arr_roberta = self.run_spacy(list_word.to_pylist())
+        arr_roberta = self.run_spacy(words=list_word.to_pylist())
         return table.append_column("roberta", arr_roberta)
-
 
 if __name__ == "__main__":
     dataset = pl.read_parquet("./data/scamp/scamp-plausible.parquet")
@@ -52,7 +30,7 @@ if __name__ == "__main__":
     dataset = ray.data.from_arrow(dataset.to_arrow())
 
     dataset = dataset.repartition(47).map_batches(
-        SpacyParser, # pyright: ignore
+        SpacyParser,  # pyright: ignore
         batch_size=1024,
         batch_format="pyarrow",
         compute=ray.data.ActorPoolStrategy(min_size=16, max_size=47),

@@ -2,10 +2,17 @@
 Functions that inject linguistic lexical information into the data.
 """
 
-
 from typing import Final, TypedDict
 from typing import TypedDict
+from loguru import logger
+import pyarrow as pa
 import regex
+
+try:
+    import spacy
+    from spacy.tokens import Doc
+except ImportError:
+    logger.warning("spacy is not installed. Spacy is required to annotate lexical information.")
 
 from typing_extensions import deprecated
 import numpy as np
@@ -25,6 +32,7 @@ def to_lemma(word: str, pos: str):
 @Lazy
 def spacy_pipeline():
     import spacy
+
     return spacy.load("en_core_web_trf")
 
 
@@ -41,6 +49,7 @@ def fix_spacing(sentence: str) -> str:
 
     return sentence
 
+
 def vec_to_lemma(word: list[str]):
     """
     Convert a vector of words to a vector of lemmas.
@@ -55,6 +64,7 @@ def vec_to_lemma(word: list[str]):
         "pos": [token.pos_ for token in doc],
     }
 
+
 class SpacyMetadata(TypedDict):
     lemma: list[str]
     morph: list[str]
@@ -62,6 +72,7 @@ class SpacyMetadata(TypedDict):
     pos_penn: list[str]
     dep_arc: list[np.int32]
     dep_rel: list[str]
+
 
 def run_spacy(words: list[str]) -> SpacyMetadata:
     """
@@ -74,6 +85,7 @@ def run_spacy(words: list[str]) -> SpacyMetadata:
         Doc: The processed spacy Doc object.
     """
     from spacy.tokens import Doc
+
     nlp = spacy_pipeline()
     doc = Doc(nlp.vocab, words=words)
     doc = nlp(doc)
@@ -224,3 +236,40 @@ BIDGOOD_VERBS: Final = {
         "stop",
     },
 }
+
+
+class BaseSpacyParser:
+    def __init__(self):
+        self.spacy_pipeline = spacy.load("en_core_web_trf", disable=["ner"])
+
+    def run_spacy(
+            self,
+            *,
+            sentences: list[str] | None = None,
+            words: list[list[str]] | None = None,
+        ) -> pa.Array:
+        if not (sentences or words):
+            raise ValueError("Either sentences or words must be provided.")
+        if sentences and words:
+            raise ValueError("Only one of sentences or words can be provided.")
+        
+        if sentences:
+            outputs = list(self.spacy_pipeline.pipe(sentences))
+        else:
+            inputs = [Doc(self.spacy_pipeline.vocab, words=w) for w in words]
+            outputs = list(self.spacy_pipeline.pipe(inputs))
+
+        lemma = pa.array([[token.lemma_ for token in doc] for doc in outputs], pa.list_(pa.string()))
+        morph = pa.array([[str(token.morph) for token in doc] for doc in outputs], pa.list_(pa.string()))
+        dep_arc = pa.array(
+            [[(token.head.i + 1 if token.dep_ != "ROOT" else 0) for token in doc] for doc in outputs],
+            pa.list_(pa.int32()),
+        )
+        dep_rel = pa.array([[token.dep_ for token in doc] for doc in outputs], pa.list_(pa.string()))
+        pos_ud = pa.array([[token.pos_ for token in doc] for doc in outputs], pa.list_(pa.string()))
+        pos_penn = pa.array([[token.tag_ for token in doc] for doc in outputs], pa.list_(pa.string()))
+
+        return pa.StructArray.from_arrays(
+            [lemma, morph, dep_arc, dep_rel, pos_ud, pos_penn],
+            names=["lemma", "morph", "dep_arc", "dep_rel", "pos_ud", "pos_penn"],
+        )
