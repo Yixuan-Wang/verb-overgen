@@ -4,7 +4,7 @@
 
 import marimo
 
-__generated_with = "0.18.4"
+__generated_with = "0.19.2"
 app = marimo.App(width="medium")
 
 
@@ -22,7 +22,7 @@ def _():
 
 @app.cell
 def _():
-    __import__("os").chdir(__import__("os").environ["VSCODE_CWD"])
+    __import__("os").chdir(__import__("os").environ["PWD"])
     return
 
 
@@ -90,6 +90,16 @@ def _():
     descend
     exit
     chortle""".split("\n")
+
+    # LIST_PERIPHRASTIC_CAUS_VERBS.extend([
+    #     "cry",
+    #     "walk",
+    #     "yell",
+    #     "run",
+    #     "stand",
+    #     "gallop",
+    #     "cross",
+    # ])
     return (LIST_PERIPHRASTIC_CAUS_VERBS,)
 
 
@@ -143,7 +153,7 @@ def _(
         pl.col("verb_causative").is_not_null(),
         pl.col("verb_causative").is_in(LIST_PERIPHRASTIC_CAUS_VERBS),
     )
-    return (dataset_periphrastic_causative,)
+    return dataset_periphrastic_causative, extract_periphrastic_make
 
 
 @app.cell
@@ -167,12 +177,35 @@ def _(
 
 
 @app.cell
-def _():
-    return
+def _(
+    LIST_PERIPHRASTIC_CAUS_VERBS,
+    dataset,
+    expr_content_lemma,
+    expr_content_pos,
+    expr_content_raw,
+    extract_periphrastic_make,
+    pl,
+):
+    dataset_all_periphrastic = dataset.filter(
+        pl.col("morph").struct.field("lemma").list.contains("make")
+    ).select(
+        "id_file",
+        "id_utterance",
+        expr_content_raw,
+        expr_content_lemma,
+        pl.col("morph").struct.field("pos").list.len().add(2).alias("count_tokens"),
+        expr_content_pos,
+        pl.col("parse").pipe(extract_periphrastic_make).list.first().alias("verb_causative"),
+    ).filter(
+        pl.col("verb_causative").is_not_null(),
+        pl.col("verb_causative").is_in(LIST_PERIPHRASTIC_CAUS_VERBS).not_(),
+    )
+    return (dataset_all_periphrastic,)
 
 
 @app.cell
-def _():
+def _(dataset_all_periphrastic, pl):
+    dataset_all_periphrastic.select(pl.col("verb_causative").value_counts().struct.unnest()).sort(["count", "verb_causative"], descending=[True, False])
     return
 
 

@@ -4,7 +4,7 @@
 
 import marimo
 
-__generated_with = "0.18.4"
+__generated_with = "0.19.2"
 app = marimo.App(
     width="medium",
     css_file="/home/tomyxw/Projects/2025/verb-overgen/verb-overgen/notebook.css",
@@ -30,7 +30,7 @@ def _(plt):
 @app.cell
 def _(pl):
     # dataset = pl.read_parquet("/u501/y4466wan/projects/2025/verb-overgen/data/childes-gold/test-251010T0422/merged.test.parquet/pychildes-morphosyntax.20251024.parquet")
-    dataset = pl.read_parquet("/home/tomyxw/Projects/2025/verb-overgen/var/pychildes-morphosyntax.20251024.parquet")
+    dataset = pl.read_parquet("/home/tomyxw/Projects/2025/verb-overgen/data/pychildes-morphosyntax.20251024.parquet")
 
     dataset = dataset.with_columns(
         pl.struct(
@@ -257,6 +257,12 @@ def _(
 
     df_this_lemma_with_parse
     return (df_this_lemma_with_parse,)
+
+
+@app.cell
+def _(df_this_lemma_with_parse, pl):
+    df_this_lemma_with_parse.filter(pl.col("children_rel").list.contains("OBJ"))
+    return
 
 
 @app.cell
