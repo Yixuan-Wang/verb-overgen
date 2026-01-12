@@ -59,8 +59,7 @@ def sample(
 
 _DTYPE_GENERATED_PROMPTS = pa.struct([
     pa.field("fragment_subject", pa.string()),
-    pa.field("fragment_object", pa.string()),
-    pa.field("fragment_noun_bank", pa.list_(pa.string())),
+    pa.field("fragment_object_candidates", pa.list_(pa.string())),
     pa.field("verb", pa.string()),
     pa.field("prompt", pa.string()),
 ])
