@@ -22,7 +22,9 @@ def _():
 
 @app.cell
 def _():
-    __import__("os").chdir(__import__("os").environ["PWD"])
+    import os as _os
+
+    _os.chdir(_os.environ["PWD"])
     return
 
 
@@ -140,7 +142,7 @@ def _(
     from verb_overgen.prep.lib.pattern_matching import extract_periphrastic_make
 
     dataset_periphrastic_causative = dataset.filter(
-        pl.col("morph").struct.field("lemma").list.contains("make")
+        pl.col("morph").struct.field("lemma").list.contains(item="make")
     ).select(
         "id_file",
         "id_utterance",
@@ -217,6 +219,81 @@ def _(dataset_periphrastic_causative, lemma_search, mo, pl):
         lemma_search,
         _df.select(pl.col("count_tokens").sum()),
         _df,
+    ])
+    return
+
+
+@app.cell
+def _(dataset):
+    dataset
+    return
+
+
+@app.cell
+def _(dataset, expr_content_lemma, expr_content_pos, expr_content_raw, pl):
+    from verb_overgen.prep.lib.pattern_matching import extract_periphrastic_causative, extract_verb, get_substructure, get_target_word
+
+    dataset_otherwise = dataset.filter(
+        pl.col("morph").struct.field("lemma").list.contains(item="get")
+    ).select(
+        "id_file",
+        "id_utterance",
+        expr_content_raw,
+        expr_content_lemma,
+        (_expr_pos := pl.col("morph").struct.field("pos")).list.len().add(2).alias("count_tokens"),
+        expr_content_pos,
+        # extract_verb(_expr_pos, pl.col("morph").struct.field("lemma")).alias("verb"),
+        pl.col("parse").pipe(extract_periphrastic_causative, support_verb="get", pos=_expr_pos).list.first().alias("verb_causative"),
+        get_substructure(
+            pl.col("parse"),
+            pl.col("parse").pipe(get_target_word, target_word="get").list.first(),
+            _expr_pos,
+        ),
+        "morph",
+        "parse",
+    ).filter(
+        pl.col("verb_causative").is_not_null(),
+        pl.col("substructure").struct["children_rel"].list.contains("OBJ"),
+        # pl.col("verb").list.len() > 0,
+        # pl.col("verb_causative").
+        # pl.col("verb").list.contains("get"),
+        # pl.col("verb").list.eval(pl.element().eq("get").arg_true()).list.first() < (pl.col("verb").list.len() - 1),
+        # pl.col("morph").struct.field("lemma").list.contains("to"),
+    ).with_row_index()
+    return (dataset_otherwise,)
+
+
+@app.cell
+def _(dataset_otherwise, pl):
+    dataset_otherwise.group_by("verb_causative").agg(pl.len().alias("count")).sort("count", descending=True)
+    return
+
+
+@app.cell
+def _(dataset_otherwise, mo):
+    num_example_idx = mo.ui.number(start=0, stop=len(dataset_otherwise) - 1)
+    return (num_example_idx,)
+
+
+@app.cell
+def _(dataset_otherwise, mo, num_example_idx):
+    from verb_overgen.prep.lib.graph import create_parse_graph, draw_parse_graph
+
+    _fig = draw_parse_graph(
+        create_parse_graph(dataset_otherwise[num_example_idx.value, "parse"]), # type: ignore
+        highlight_node=lambda g, n, d: ("bold", "red") if d["label"] == "get" else (None, None),
+        highlight_edge=lambda g, u, v, d: (
+            ("bold", "red") if g.nodes[u]["label"] == "get"
+            else ("bold", "blue") if g.nodes[v]["label"] == "get"
+            else (None, None)
+        ),
+    )
+
+    mo.vstack([
+        num_example_idx,
+        dataset_otherwise[num_example_idx.value, :].to_dicts()[0],
+        dataset_otherwise[num_example_idx.value, "content_raw"],
+        _fig,
     ])
     return
 

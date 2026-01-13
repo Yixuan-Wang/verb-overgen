@@ -187,9 +187,9 @@ def _(bidgood, df_verblike_lemma, pl):
         pl.col("lemma").map_elements(bidgood, pl.String).alias("bidgood")
     )
 
-    _df.filter(
-        (pl.col("verb_like_count") > 1000).or_(pl.col("bidgood").ne("uncategorized"))
-    ).write_csv("verb_candidate.csv")
+    # _df.filter(
+    #     (pl.col("verb_like_count") > 1000).or_(pl.col("bidgood").ne("uncategorized"))
+    # ).write_csv("verb_candidate.csv")
     return
 
 
@@ -260,8 +260,11 @@ def _(
 
 
 @app.cell
-def _(df_this_lemma_with_parse, pl):
-    df_this_lemma_with_parse.filter(pl.col("children_rel").list.contains("OBJ"))
+def _(df_this_lemma_with_parse, lemma_search, pl):
+    df_this_lemma_with_parse.filter(
+        pl.col("content_lemma").str.contains(fr"{lemma_search.value}.*\bto\b"),
+        pl.col("children_rel").list.contains("OBJ"),
+    )
     return
 
 
@@ -345,12 +348,10 @@ def _(mo):
 
 @app.cell
 def _(df_this_lemma_with_parse, pl):
-
-
     (
         df_this_lemma_with_parse
             .filter(
-                pl.col("head").is_in(["make", "let", "get"]),
+                pl.col("head").is_in(["let", "get"]),
                 # pl.col("head")
             )
     )
@@ -358,10 +359,8 @@ def _(df_this_lemma_with_parse, pl):
 
 
 @app.cell
-def _():
-    from verb_overgen.prep.lib.lexical import BIDGOOD_VERBS
-
-    BIDGOOD_VERBS
+def _(df_verblike_lemma):
+    df_verblike_lemma
     return
 
 

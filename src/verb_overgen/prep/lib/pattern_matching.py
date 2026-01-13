@@ -3,6 +3,7 @@ Polars expressions for pattern matching on the data.
 """
 
 from collections.abc import Iterable
+from functools import partial
 import polars as pl
 
 def match_svo(parse_expr: pl.Expr):
@@ -133,8 +134,12 @@ def extract_verb(
     verbs = word.list.gather(idx_is_verb)
     return verbs
 
-def extract_periphrastic_make(
+def extract_periphrastic_causative(
     parse: pl.Expr,
+    *,
+    support_verb: str,
+    pos: pl.Expr | None = None,
+    target_pos: Iterable[str] = ("v", "part"),
 ):
     """
     Extract periphrastic constructions involving *make*,
@@ -142,6 +147,8 @@ def extract_periphrastic_make(
         
     Args:
         parse (pl.Expr): The parsed data. Should be evaluated to dtype `DtParse`.
+        support_verb (str): The support verb to look for, e.g. "make".
+        pos (pl.Expr | None): The POS tags of the sentence. If provided, can be used for further filtering.
 
     Returns:
         pl.Expr: The children that are `COMP` children of *make*. Nullable.
@@ -150,7 +157,7 @@ def extract_periphrastic_make(
     arc = parse.struct.field("arc")
     rel = parse.struct.field("rel")
 
-    indices_make = word.list.eval(pl.element().eq("make").arg_true())
+    indices_make = word.list.eval(pl.element().eq(support_verb).arg_true())
     indices_children = pl.concat_list(pl.struct(arc, indices_make)).list.eval(
         (lambda e1, e2: e1.eq(e2 + 1).arg_true())(pl.element().struct[0].explode(), pl.element().struct[1].list.first())
     )
@@ -158,6 +165,11 @@ def extract_periphrastic_make(
         pl.element().eq("COMP").arg_true()
     )
     indices_comp_children = indices_children.list.gather(indices_children_comp)
+    if pos is not None:
+        idx_is_verb = pos.list.eval(pl.element().is_in(list(target_pos)).arg_true())
+        indices_comp_children = indices_comp_children.list.set_intersection(idx_is_verb)
     word_comp_children = word.list.gather(indices_comp_children)
 
     return word_comp_children
+
+extract_periphrastic_make = partial(extract_periphrastic_causative, support_verb="make")
