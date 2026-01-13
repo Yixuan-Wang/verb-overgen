@@ -7,7 +7,7 @@ import networkx as nx
 import matplotlib.pyplot as plt
 import numpy as np
 
-from ..common import Parse
+from verb_overgen.prep.lib.syntactic import Parse
 
 
 def create_parse_graph(parse: Parse):

@@ -7,10 +7,10 @@ import torch
 import warnings
 
 from verb_overgen.prep.lib.lexical import fix_spacing
+from verb_overgen.prep.lib.syntactic import DtParse, Parse
 from verb_overgen.util.log_util import register_workload_on_df, report_progress
 import verb_overgen.util.pl_util as pl_util
 
-from .common import DtParse, Parse
 
 # :see-also: https://github.com/yzhangcs/parser?tab=readme-ov-file#dependency-parsing
 PARSER = Parser.load("dep-biaffine-roberta-en")

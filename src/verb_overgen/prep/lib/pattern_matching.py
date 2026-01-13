@@ -1,10 +1,14 @@
 """
 Polars expressions for pattern matching on the data.
+
+The datatype definition can be found in `prep.lib.syntactic.DtParse`.
 """
 
 from collections.abc import Iterable
 from functools import partial
+
 import polars as pl
+
 
 def match_svo(parse_expr: pl.Expr):
     """
@@ -19,15 +23,16 @@ def match_svo(parse_expr: pl.Expr):
     """
 
     rel = parse_expr.struct.field("rel")
-    
+
     is_nsubj = rel.list.eval(pl.element().eq("nsubj").arg_true())
     is_dobj = rel.list.eval(pl.element().eq("dobj").arg_true())
-    
+
     arc = parse_expr.struct.field("arc")
     nsubj_head = arc.list.gather(is_nsubj)
     dobj_head = arc.list.gather(is_dobj)
 
     return nsubj_head.list.set_intersection(dobj_head)
+
 
 def match_transitive(
     parse: pl.Expr,
@@ -53,6 +58,7 @@ def match_transitive(
     joint = is_verb.list.eval(pl.element().add(1)).list.set_intersection(dobj_head)
     return joint
 
+
 def get_target_word(
     parse: pl.Expr,
     target_word: str,
@@ -62,18 +68,18 @@ def get_target_word(
 
     You almost certainly want to use `.explode()` or `.list.first()` on the result.
     Notice that the returned indices are 1-indexed, as 0 is reserved for the root node.
-    
+
     Args:
         parse (pl.Expr): The parsed data. Should be evaluated to dtype `DtParse`.
         target_word (str): The target word to find.
-    
+
     Returns:
         pl.Expr: The list of indices of the target word, `index_target_word`.
     """
     word = parse.struct.field("word")
     indices = word.list.eval(pl.element().eq(target_word).arg_true()).alias("index_target_word")
     return indices
-    
+
 
 def get_substructure(
     parse: pl.Expr,
@@ -83,7 +89,7 @@ def get_substructure(
     word = parse.struct.field("word")
     arc = parse.struct.field("arc")
     rel = parse.struct.field("rel")
-   
+
     head_indices = arc.list.get(index_target_word)
     head = pl.when(head_indices.eq(0)).then(pl.lit("<ROOT>")).otherwise(word.list.get(head_indices - 1))
     head_rels = rel.list.get(index_target_word)
@@ -112,12 +118,8 @@ def get_substructure(
         children_rel=children_rels,
     ).alias("substructure")
 
-def extract_verb(
-    pos: pl.Expr,
-    word: pl.Expr,
-    *,
-    target_pos: Iterable[str] = ("v", "part")
-):
+
+def extract_verb(pos: pl.Expr, word: pl.Expr, *, target_pos: Iterable[str] = ("v", "part")):
     """
     Extract verbs from the sentence.
 
@@ -125,7 +127,7 @@ def extract_verb(
         pos (pl.Expr): The POS tags of the sentence.
         word (pl.Expr): The words (or lemmas) of the sentence.
         target_pos (Iterable[str]): The POS tags to consider as verbs. Defaults to `("v", "part")`.
-    
+
     Returns:
         pl.Expr: The list of verbs in the sentence.
     """
@@ -133,6 +135,7 @@ def extract_verb(
     idx_is_verb = pos.list.eval(pl.element().is_in(list(target_pos)).arg_true())
     verbs = word.list.gather(idx_is_verb)
     return verbs
+
 
 def extract_periphrastic_causative(
     parse: pl.Expr,
@@ -144,7 +147,7 @@ def extract_periphrastic_causative(
     """
     Extract periphrastic constructions involving *make*,
         i.e. the children (likely verb) that is a `COMP` child of *make*.
-        
+
     Args:
         parse (pl.Expr): The parsed data. Should be evaluated to dtype `DtParse`.
         support_verb (str): The support verb to look for, e.g. "make".
@@ -161,9 +164,7 @@ def extract_periphrastic_causative(
     indices_children = pl.concat_list(pl.struct(arc, indices_make)).list.eval(
         (lambda e1, e2: e1.eq(e2 + 1).arg_true())(pl.element().struct[0].explode(), pl.element().struct[1].list.first())
     )
-    indices_children_comp = rel.list.gather(indices_children).list.eval(
-        pl.element().eq("COMP").arg_true()
-    )
+    indices_children_comp = rel.list.gather(indices_children).list.eval(pl.element().eq("COMP").arg_true())
     indices_comp_children = indices_children.list.gather(indices_children_comp)
     if pos is not None:
         idx_is_verb = pos.list.eval(pl.element().is_in(list(target_pos)).arg_true())
@@ -171,5 +172,6 @@ def extract_periphrastic_causative(
     word_comp_children = word.list.gather(indices_comp_children)
 
     return word_comp_children
+
 
 extract_periphrastic_make = partial(extract_periphrastic_causative, support_verb="make")
