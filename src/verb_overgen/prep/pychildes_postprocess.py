@@ -6,8 +6,7 @@ import polars as pl
 from verb_overgen.prep.lib.pattern_matching import extract_periphrastic_make
 from verb_overgen.prep.lib.lexical import BIDGOOD_VERBS
 from verb_overgen.common.features import FEATURE_CAUSATIVE, FEATURE_CAUSATIVE_ENTRENCHED
-
-from src.verb_overgen.prep.lib.pattern_matching import extract_verb
+from verb_overgen.prep.lib.pattern_matching import extract_verb
 
 
 def load_data(file_path: str) -> pl.DataFrame:
@@ -72,7 +71,7 @@ def mark_causative(
     )
 
 if __name__ == "__main__":
-    df = load_data("./data/pychildes-morphosyntax.20251024.parquet")
+    df = load_data("./data/pychildes/pychildes-morphosyntax-tokenized.20251024.parquet")
     df = df.with_columns(
         pl.col("features").pipe(
             mark_causative,
