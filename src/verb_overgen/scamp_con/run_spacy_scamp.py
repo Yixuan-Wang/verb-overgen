@@ -9,7 +9,8 @@ import pyarrow as pa
 import polars as pl
 import ray
 
-from src.verb_overgen.prep.lib.lexical import BaseSpacyParser
+from verb_overgen.prep.lib.lexical import BaseSpacyParser
+
 
 class SpacyParser(BaseSpacyParser):
     """A Ray data batch mapper that adds Spacy parses to SCAMP dataset."""

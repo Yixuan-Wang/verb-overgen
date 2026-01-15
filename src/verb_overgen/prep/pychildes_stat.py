@@ -2,7 +2,7 @@ import polars as pl
 
 from verb_overgen.prep.lib.lexical import BIDGOOD_VERBS
 
-from src.verb_overgen.prep.lib.pattern_matching import extract_periphrastic_make
+from verb_overgen.prep.lib.pattern_matching import extract_periphrastic_make
 
 def load_data(file_path: str) -> pl.DataFrame:
     """Load data.

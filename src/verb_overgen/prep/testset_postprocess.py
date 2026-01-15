@@ -8,10 +8,7 @@ import regex as re
 
 from typing import cast
 
-from src.verb_overgen.prep.lib.lexical import BaseSpacyParser
-
-if __name__ != "__main__":
-    raise RuntimeError("This script is not intended to be imported as a module.")
+from verb_overgen.prep.lib.lexical import BaseSpacyParser
 
 
 def load_dataset(
