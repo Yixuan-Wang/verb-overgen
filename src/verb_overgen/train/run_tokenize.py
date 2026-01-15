@@ -25,6 +25,13 @@ def load_pychildes_data(input_path: str) -> pa.Table:
 
     return df.to_arrow()
 
+def tokenize(
+    tokenizer: hftk.Tokenizer,
+    sentences: list[str],
+):
+    list_tokenize_result = tokenizer.encode_batch_fast(sentences)
+    input_ids: list[list[int]] = [[tokenizer.token_to_id(BOS_TOKEN), *enc.ids, tokenizer.token_to_id(EOS_TOKEN)] for enc in list_tokenize_result]
+    return input_ids
 
 class Tokenize:
     def __init__(
