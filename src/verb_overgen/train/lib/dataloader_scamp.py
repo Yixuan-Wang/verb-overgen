@@ -4,6 +4,7 @@ from typing import Any, TypedDict, cast
 import lightning as ptl
 import polars as pl
 from torch.utils.data import Dataset as TorchDataset
+from loguru import logger
 
 from verb_overgen.train.lib.dataloader import DataBatch, DataOne, collate, get_one_data
 from verb_overgen.util.misc_util import ensure_dir
@@ -26,6 +27,10 @@ class DatasetScamp(TorchDataset[DataOneScamp]):
     def _load_data(self, input_path: str):
         dataset = pl.read_parquet(input_path).with_row_index("index_sentence")
         return dataset
+    
+    def debug_truncate(self, n_samples: int):
+        print(f"Truncating SCAMP eval set to {n_samples} samples for debugging.")
+        self.dataframe = self.dataframe.head(n_samples)
 
     def __len__(self):
         return len(self.dataframe)

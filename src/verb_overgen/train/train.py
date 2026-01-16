@@ -11,9 +11,11 @@ import transformers as hf
 from jaxtyping import Float, Int
 from lightning.pytorch.loggers import WandbLogger
 from lightning.pytorch.callbacks import ModelCheckpoint
+from loguru import logger
 from torch import Tensor
 from transformers.modeling_outputs import CausalLMOutput
 from typing_extensions import override
+
 
 from verb_overgen.common.tokenize import BOS_TOKEN, EOS_TOKEN, PAD_TOKEN
 from verb_overgen.train.lib.dataloader_pychildes import DataBatchPyChildes, DatasetPyChildes
@@ -69,6 +71,9 @@ class VerbOvergenTrainModule(ptl.LightningModule):
                 wait_duration=300
             )
             return self.skip_training_step()
+
+        if self.trainer.global_step == 1:
+            logger.info("Debug: Training step utterances {}", batch["index"])
 
         seq_length = batch["seq_length"]
         self.log("train/seq_length_mean", seq_length.float().mean())
@@ -128,8 +133,8 @@ class VerbOvergenTrainModule(ptl.LightningModule):
 
 
 if __name__ == "__main__":
-    # FIXME(production): Enable wandb
-    environ["WANDB_MODE"] = "disabled"
+    # environ["WANDB_MODE"] = "disabled"
+    ptl.seed_everything(42)
 
     PATH_TRAIN = "./data/pychildes/pychildes-morphosyntax_postprocess.20260102_20251024.parquet"
     PATH_EVAL = "./data/scamp/scamp-postprocessed-tokenized.20260101.parquet"
@@ -140,42 +145,37 @@ if __name__ == "__main__":
         tokenizer_object=hftk.Tokenizer.from_file(PATH_TOKENIZER),
     )
     token_id_pad = tokenizer._tokenizer.token_to_id(PAD_TOKEN)
+
     dataset_train = DatasetPyChildes(
         input_path=Path(PATH_TRAIN),
         token_id_pad=token_id_pad,
     )
-
     randgen_train_shuffling = torch.Generator()
     randgen_train_shuffling.manual_seed(42)
-
     dataloader_train = torch.utils.data.DataLoader(
         dataset_train,
-        # FIXME(production): change batch size
-        batch_size=512,
+        batch_size=256,
         shuffle=True,
         collate_fn=dataset_train.collate_fn,
         generator=randgen_train_shuffling,
     )
 
-    dataset_eval = DatasetScamp(
+    dataset_val = DatasetScamp(
         input_path=PATH_EVAL,
         token_id_pad=token_id_pad,
     )
     dataloader_val = torch.utils.data.DataLoader(
-        dataset_eval,
-        # FIXME(production): change batch size
+        dataset_val,
         batch_size=512,
         shuffle=False,
-        collate_fn=dataset_eval.collate_fn,
+        collate_fn=dataset_val.collate_fn,
     )
 
     dataset_test = DatasetTestset(
-        input_path=PATH_TEST,
-        token_id_pad=token_id_pad,
+        input_path=PATH_TEST,        token_id_pad=token_id_pad,
     )
     dataloader_test = torch.utils.data.DataLoader(
         dataset_test,
-        # FIXME(production): change batch size
         batch_size=512,
         shuffle=False,
         collate_fn=dataset_test.collate_fn
@@ -198,12 +198,12 @@ if __name__ == "__main__":
         model_config=model_config,
     )
 
-    logger = WandbLogger(
+    wandb_logger = WandbLogger(
         project="25-verb-overgen",
         save_dir=ensure_dir("./logs/wandb"),
         log_model=False, # Use PyTorch Lightning to log models
     )
-    logger.experiment.config.update({
+    wandb_logger.experiment.config.update({
         "path_tokenizer": PATH_TOKENIZER,
         "path_dataset_train": PATH_TRAIN,
         "path_dataset_eval": PATH_EVAL,
@@ -211,7 +211,7 @@ if __name__ == "__main__":
     })
     
 
-    wandb_run = logger.experiment
+    wandb_run = wandb_logger.experiment
     run_name: str = wandb_run.name or "debug"
     PATH_ROOT = ensure_dir(f"./var/train/20251230/{run_name}")
 
@@ -232,7 +232,7 @@ if __name__ == "__main__":
         log_every_n_steps=100,
         val_check_interval=0.25,
         #
-        logger=logger,
+        logger=wandb_logger,
         default_root_dir=PATH_ROOT,
     )
 
@@ -251,5 +251,5 @@ if __name__ == "__main__":
         dataloaders=dataloader_test,
     )
 
-    logger.experiment.finish()
-    logger.finalize("success")
+    wandb_logger.experiment.finish()
+    wandb_logger.finalize("success")

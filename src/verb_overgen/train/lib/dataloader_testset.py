@@ -2,6 +2,7 @@ from pathlib import Path
 from typing import Any, TypedDict, cast
 
 import lightning as ptl
+from loguru import logger
 import polars as pl
 from torch.utils.data import Dataset as TorchDataset
 
@@ -24,6 +25,10 @@ class DatasetTestset(TorchDataset[DataOneTestset]):
         assert "input_ids" in dataset.columns
         assert "index_sentence" in dataset.columns
         return dataset
+    
+    def debug_truncate(self, n_samples: int):
+        logger.info(f"Truncating testset to {n_samples} samples for debugging.")
+        self.dataframe = self.dataframe.head(n_samples)
 
     def __len__(self) -> int:
         return len(self.dataframe)
