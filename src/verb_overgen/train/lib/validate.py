@@ -1,0 +1,77 @@
+"""
+Validation of model.
+"""
+
+from pathlib import Path
+from typing import Any
+
+import einops as eo
+import polars as pl
+import torch
+from jaxtyping import Float, Int
+from torch import Tensor
+from torch.nn.utils.rnn import unpad_sequence
+
+import lightning as ptl
+from verb_overgen.util.misc_util import ensure_dir
+
+
+class EvalCallback(ptl.Callback):
+    def __init__(self):
+        self.eval_outputs: list[pl.DataFrame] = []
+        self.eval_dir: Path
+        
+    def on_fit_start(self, trainer: ptl.Trainer, pl_module: ptl.LightningModule) -> None:
+        self.eval_dir = ensure_dir(Path(trainer.default_root_dir) / "eval")
+
+    def on_validation_start(self, trainer: ptl.Trainer, pl_module: ptl.LightningModule) -> None:
+        self.eval_outputs.clear()
+
+    def on_validation_batch_end(
+        self,
+        trainer: "ptl.Trainer",
+        pl_module: "ptl.LightningModule",
+        outputs: Any,
+        batch: Any,
+        batch_idx: int,
+        dataloader_idx: int = 0,
+    ) -> None:
+        self.eval_outputs.append(outputs)
+
+    def on_validation_end(self, trainer: "ptl.Trainer", pl_module: "ptl.LightningModule") -> None:
+        step = trainer.global_step
+        dataset_eval = pl.concat(self.eval_outputs).with_columns(
+            pl.lit(step).alias("step")
+        )
+        # Save to parquet with step information in filename
+        output_path = self.eval_dir / f"eval_step_{step:08d}.parquet"
+        dataset_eval.write_parquet(output_path)
+
+@torch.no_grad()
+def eval_input_token_prob(
+    model: torch.nn.Module,
+    # batch: DataBatchScamp,
+    *,
+    input_ids: Int[Tensor, "batch seq"],
+    attention_mask: Int[Tensor, "batch seq"],
+    seq_length: Int[Tensor, "batch seq"],
+) -> list[Float[Tensor, "ragged_seq"]]:
+    outputs = model(
+        input_ids=input_ids,
+        attention_mask=attention_mask,
+    )
+    prob: Float[Tensor, "batch seq vocab"] = outputs.logits.softmax(dim=-1)
+
+    _this = torch.gather(
+        prob[..., :-1, :],
+        dim=-1,
+        index=eo.rearrange(input_ids[..., 1:], "batch seq -> batch seq 1"),
+    )
+    token_prob: Float[Tensor, "batch seq"] = _this[..., 0]
+
+    # Truncate each tensor to its original length and return as a list
+    token_prob = token_prob.cpu()
+    seq_length_without_bos: Int[Tensor, "batch"] = (seq_length - 1).clamp(min=0).cpu()
+    list_token_prob = unpad_sequence(token_prob, lengths=seq_length_without_bos, batch_first=True)
+
+    return list_token_prob

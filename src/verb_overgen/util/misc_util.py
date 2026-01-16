@@ -1,4 +1,6 @@
 import functools
+from pathlib import Path
+from typing import overload
 
 def affirm(value, predicate = None):
     """
@@ -56,3 +58,26 @@ class of_type:
             return cls.type(item)
         else:
             raise TypeError(f"Expected a type, got {type(item)}.")
+
+@overload
+def ensure_dir(dir: str) -> str: ...
+@overload
+def ensure_dir(dir: Path) -> Path: ...
+def ensure_dir(dir):
+    if isinstance(dir, str):
+        path_dir = Path(dir)
+    elif isinstance(dir, Path):
+        path_dir = dir
+    else:
+        raise TypeError("The directory must be a string or a Path object.")
+        
+    if path_dir.exists() and path_dir.is_file():
+        raise AssertionError("The directory exists and is already a file.")
+    
+    if not path_dir.exists():
+        path_dir.mkdir(parents=True, exist_ok=True)
+        
+    if isinstance(dir, str):
+        return str(path_dir)
+    else:
+        return path_dir
