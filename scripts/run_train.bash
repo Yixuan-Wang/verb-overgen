@@ -2,10 +2,10 @@
 
 #SBATCH --account=aip-fredashi
 #SBATCH --job-name=train-verb-overgen
-#SBATCH --cpus-per-task=4
+#SBATCH --cpus-per-task=8
 #SBATCH --gres=gpu:l40s:1
 #SBATCH --mem=64G
-#SBATCH --time=8:00:00
+#SBATCH --time=3:00:00
 #SBATCH -o logs/slurm/slurm-%j.out.txt
 #SBATCH -e logs/slurm/slurm-%j.err.txt
 

@@ -64,16 +64,13 @@ class VerbOvergenTrainModule(ptl.LightningModule):
     @override
     def training_step(self, batch: DataBatchPyChildes, batch_idx: int):
         if batch["input_ids"].shape[0] == 0:
-            self.logger.experiment.alert( # pyright:ignore
+            self.logger.experiment.alert(  # pyright:ignore
                 title="Skipped training step",
                 text=f"Skipped step {batch_idx} due to empty input",
                 level="warn",  # Options: "warn" or "error"
-                wait_duration=300
+                wait_duration=300,
             )
             return self.skip_training_step()
-
-        if self.trainer.global_step == 1:
-            logger.info("Debug: Training step utterances {}", batch["index"])
 
         seq_length = batch["seq_length"]
         self.log("train/seq_length_mean", seq_length.float().mean())
@@ -172,13 +169,11 @@ if __name__ == "__main__":
     )
 
     dataset_test = DatasetTestset(
-        input_path=PATH_TEST,        token_id_pad=token_id_pad,
+        input_path=PATH_TEST,
+        token_id_pad=token_id_pad,
     )
     dataloader_test = torch.utils.data.DataLoader(
-        dataset_test,
-        batch_size=512,
-        shuffle=False,
-        collate_fn=dataset_test.collate_fn
+        dataset_test, batch_size=512, shuffle=False, collate_fn=dataset_test.collate_fn
     )
 
     model_config = hf.GPT2Config(
@@ -201,15 +196,16 @@ if __name__ == "__main__":
     wandb_logger = WandbLogger(
         project="25-verb-overgen",
         save_dir=ensure_dir("./logs/wandb"),
-        log_model=False, # Use PyTorch Lightning to log models
+        log_model=False,  # Use PyTorch Lightning to log models
     )
-    wandb_logger.experiment.config.update({
-        "path_tokenizer": PATH_TOKENIZER,
-        "path_dataset_train": PATH_TRAIN,
-        "path_dataset_eval": PATH_EVAL,
-        "path_dataset_test": PATH_TEST,
-    })
-    
+    wandb_logger.experiment.config.update(
+        {
+            "path_tokenizer": PATH_TOKENIZER,
+            "path_dataset_train": PATH_TRAIN,
+            "path_dataset_eval": PATH_EVAL,
+            "path_dataset_test": PATH_TEST,
+        }
+    )
 
     wandb_run = wandb_logger.experiment
     run_name: str = wandb_run.name or "debug"
@@ -219,7 +215,7 @@ if __name__ == "__main__":
         dirpath=str(ensure_dir(Path(PATH_ROOT) / "checkpoints")),
         filename=f"{run_name}-{{epoch:02d}}",
         every_n_epochs=1,
-        save_top_k=-1
+        save_top_k=-1,
     )
 
     trainer = ptl.Trainer(
@@ -242,9 +238,7 @@ if __name__ == "__main__":
         val_dataloaders=dataloader_val,
     )
 
-    trainer.save_checkpoint(
-        ensure_dir(Path(f"./var/train/20251230/{run_name}/checkpoints")) / f"{run_name}_final.pth"
-    )
+    trainer.save_checkpoint(ensure_dir(Path(f"./var/train/20251230/{run_name}/checkpoints")) / f"{run_name}_final.pth")
 
     trainer.test(
         train_module,
