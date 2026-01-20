@@ -18,6 +18,7 @@ from typing_extensions import override
 
 
 from verb_overgen.common.tokenize import BOS_TOKEN, EOS_TOKEN, PAD_TOKEN
+from verb_overgen.common.features import FEATURE_CAUSATIVE
 from verb_overgen.train.lib.dataloader_pychildes import DataBatchPyChildes, DatasetPyChildes
 from verb_overgen.train.lib.dataloader_scamp import DatasetScamp, EvalScampCallback
 from verb_overgen.train.lib.dataloader_testset import DatasetTestset, TestTestsetCallback
@@ -143,9 +144,12 @@ if __name__ == "__main__":
     )
     token_id_pad = tokenizer._tokenizer.token_to_id(PAD_TOKEN)
 
+    expr_keep = pl.col("features").list.contains(FEATURE_CAUSATIVE).not_()
+
     dataset_train = DatasetPyChildes(
         input_path=Path(PATH_TRAIN),
         token_id_pad=token_id_pad,
+        expr_keep=expr_keep,
     )
     randgen_train_shuffling = torch.Generator()
     randgen_train_shuffling.manual_seed(42)
@@ -197,6 +201,7 @@ if __name__ == "__main__":
         project="25-verb-overgen",
         save_dir=ensure_dir("./logs/wandb"),
         log_model=False,  # Use PyTorch Lightning to log models
+        tags=["remove-causative-all-260119"]
     )
     wandb_logger.experiment.config.update(
         {
