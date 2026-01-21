@@ -1,0 +1,42 @@
+# Main configuration file
+defaults:
+  - model: gpt2_86m
+  - optimizer: adamw
+  - trainer: default
+  - _self_
+
+# Seed for reproducibility
+seed: 42
+
+# Experiment configuration
+experiment:
+  name: "verb-overgen-training"
+  tags:
+    - "remove-causative-all-260119"
+
+# Wandb configuration
+wandb:
+  project: "25-verb-overgen"
+  log_model: false
+  save_dir: "./logs/wandb"
+
+tokenizer: "./data/tokenizer/1024-wordlevel/tokenizer.json"
+
+# Output paths
+output:
+  root_dir: "./var/train/20251230"
+
+# Data loading
+# TODO: Add filtering to the logic.
+data:
+  train:
+    path: "./data/pychildes/pychildes-morphosyntax_postprocess.20260102_20251024.parquet"
+    batch_size: 256
+    shuffle: true
+    shuffle_seed: 42
+  val:
+    path: "./data/scamp/scamp-postprocessed-tokenized.20260101.parquet"
+    batch_size: 512
+  test:
+    path: "./data/testset/output/testset_llm_gen.final_postprocessed_20260114T1637.parquet"
+    batch_size: 512

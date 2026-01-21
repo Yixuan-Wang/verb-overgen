@@ -1,0 +1,10 @@
+# GPT-2 Base Model Configuration
+name: gpt2_86m
+
+# Model architecture
+n_positions: 160  # Max sequence length
+n_ctx: 160        # Context length
+n_embd: 768       # Embedding dimension
+n_layer: 8        # Number of transformer layers
+n_head: 8         # Number of attention heads
+# n_inner: 3072   # FFN inner dimension (defaults to 4 * n_embd)

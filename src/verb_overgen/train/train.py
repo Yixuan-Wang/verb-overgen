@@ -2,26 +2,28 @@ from os import environ
 from pathlib import Path
 from typing import TYPE_CHECKING, cast
 
+from apfel import Lazy
 import lightning as ptl
 import polars as pl
 import tokenizers as hftk
 import torch
 import torch.nn.functional as nnf
 import transformers as hf
+from hydra import compose, initialize_config_dir
 from jaxtyping import Float, Int
-from lightning.pytorch.loggers import WandbLogger
 from lightning.pytorch.callbacks import ModelCheckpoint
+from lightning.pytorch.loggers import WandbLogger
 from loguru import logger
+from omegaconf import DictConfig, OmegaConf
 from torch import Tensor
 from transformers.modeling_outputs import CausalLMOutput
 from typing_extensions import override
 
-
-from verb_overgen.common.tokenize import BOS_TOKEN, EOS_TOKEN, PAD_TOKEN
 from verb_overgen.common.features import FEATURE_CAUSATIVE
+from verb_overgen.common.tokenize import BOS_TOKEN, EOS_TOKEN, PAD_TOKEN
 from verb_overgen.train.lib.dataloader_pychildes import DataBatchPyChildes, DatasetPyChildes
 from verb_overgen.train.lib.dataloader_scamp import DatasetScamp, EvalScampCallback
-from verb_overgen.train.lib.dataloader_testset import DatasetTestset, TestTestsetCallback
+from verb_overgen.train.lib.dataloader_testset import DatasetTestset, EvalTestsetCallback
 from verb_overgen.train.lib.validate import eval_input_token_prob
 from verb_overgen.util.misc_util import ensure_dir
 
@@ -33,22 +35,27 @@ MAX_LEN: int = 160
 
 
 class VerbOvergenTrainModule(ptl.LightningModule):
-    def __init__(self, model_config):
+    def __init__(self, model_config, optimizer_config):
         super().__init__()
         self.save_hyperparameters()
-
         self.model = hf.GPT2LMHeadModel(model_config)
+        self.optimizer_config = optimizer_config
 
     @override
     def configure_optimizers(self):
-        optimizer = torch.optim.AdamW(self.model.parameters(), lr=5e-5, weight_decay=0.0, betas=(0.9, 0.95))
+        optimizer = torch.optim.AdamW(
+            self.model.parameters(),
+            lr=self.optimizer_config.lr,
+            weight_decay=self.optimizer_config.weight_decay,
+            betas=tuple(self.optimizer_config.betas),
+        )
 
-        warmup_steps = 1000
+        warmup_steps = self.optimizer_config.scheduler.warmup_steps
         scheduler: LRSchedulerConfigType = {
             "scheduler": torch.optim.lr_scheduler.LinearLR(
                 optimizer,
-                start_factor=1 / warmup_steps,
-                end_factor=1.0,
+                start_factor=self.optimizer_config.scheduler.start_factor,
+                end_factor=self.optimizer_config.scheduler.end_factor,
                 total_iters=warmup_steps,
             ),
             "interval": "step",
@@ -129,126 +136,159 @@ class VerbOvergenTrainModule(ptl.LightningModule):
     def test_step(self, batch, batch_idx):
         return self.eval_input_token_prob_step(batch)
 
+@Lazy
+def wandb_logger():
+    # Setup Weights & Biases logger
+    wandb_logger = WandbLogger(
+        project="25-verb-overgen",
+        save_dir=ensure_dir("./logs"), # Wandb will create subdirectory here
+        log_model=False,
+    )
 
-if __name__ == "__main__":
-    # environ["WANDB_MODE"] = "disabled"
-    ptl.seed_everything(42)
+    return wandb_logger
 
-    PATH_TRAIN = "./data/pychildes/pychildes-morphosyntax_postprocess.20260102_20251024.parquet"
-    PATH_EVAL = "./data/scamp/scamp-postprocessed-tokenized.20260101.parquet"
-    PATH_TEST = "./data/testset/output/testset_llm_gen.final_postprocessed_20260114T1637.parquet"
-    PATH_TOKENIZER = "./data/tokenizer/1024-wordlevel/tokenizer.json"
 
+def main(cfg: DictConfig):
+    # Print configuration
+    logger.info("Training configuration:")
+    logger.info(OmegaConf.to_yaml(cfg))
+
+    # Set seed for reproducibility
+    ptl.seed_everything(cfg.seed)
+
+    # Load tokenizer
     tokenizer = hf.PreTrainedTokenizerFast(
-        tokenizer_object=hftk.Tokenizer.from_file(PATH_TOKENIZER),
+        tokenizer_object=hftk.Tokenizer.from_file(cfg.tokenizer),
     )
     token_id_pad = tokenizer._tokenizer.token_to_id(PAD_TOKEN)
 
     expr_keep = pl.col("features").list.contains(FEATURE_CAUSATIVE).not_()
 
     dataset_train = DatasetPyChildes(
-        input_path=Path(PATH_TRAIN),
+        input_path=Path(cfg.data.train.path),
         token_id_pad=token_id_pad,
         expr_keep=expr_keep,
     )
     randgen_train_shuffling = torch.Generator()
-    randgen_train_shuffling.manual_seed(42)
+    if (seed_train_shuffling := OmegaConf.select(cfg, "data.train.shuffle_seed", default=None)) is not None:
+        randgen_train_shuffling.manual_seed(seed_train_shuffling)
     dataloader_train = torch.utils.data.DataLoader(
         dataset_train,
-        batch_size=256,
-        shuffle=True,
+        batch_size=cfg.data.train.batch_size,
+        shuffle=cfg.data.train.shuffle,
         collate_fn=dataset_train.collate_fn,
         generator=randgen_train_shuffling,
     )
 
+    # Create validation dataset and dataloader
     dataset_val = DatasetScamp(
-        input_path=PATH_EVAL,
+        input_path=cfg.data.val.path,
         token_id_pad=token_id_pad,
     )
     dataloader_val = torch.utils.data.DataLoader(
         dataset_val,
-        batch_size=512,
-        shuffle=False,
+        batch_size=cfg.data.val.batch_size,
+        shuffle=cfg.data.val.shuffle,
         collate_fn=dataset_val.collate_fn,
     )
 
+    # Create test dataset and dataloader
     dataset_test = DatasetTestset(
-        input_path=PATH_TEST,
+        input_path=cfg.data.test.path,
         token_id_pad=token_id_pad,
     )
     dataloader_test = torch.utils.data.DataLoader(
-        dataset_test, batch_size=512, shuffle=False, collate_fn=dataset_test.collate_fn
+        dataset_test,
+        batch_size=cfg.data.test.batch_size,
+        shuffle=cfg.data.test.shuffle,
+        collate_fn=dataset_test.collate_fn,
     )
 
+    # Create model configuration
     model_config = hf.GPT2Config(
         vocab_size=tokenizer.vocab_size,
-        n_positions=MAX_LEN,
-        n_ctx=MAX_LEN,
-        n_embd=768,
-        n_layer=8,
-        n_head=8,
-        # n_inner=4 * 768,
+        n_positions=cfg.model.n_positions,
+        n_ctx=cfg.model.n_ctx,
+        n_embd=cfg.model.n_embd,
+        n_layer=cfg.model.n_layer,
+        n_head=cfg.model.n_head,
         pad_token_id=tokenizer._tokenizer.token_to_id(PAD_TOKEN),
         bos_token_id=tokenizer._tokenizer.token_to_id(BOS_TOKEN),
         eos_token_id=tokenizer._tokenizer.token_to_id(EOS_TOKEN),
     )
 
+    # Create training module
     train_module = VerbOvergenTrainModule(
         model_config=model_config,
+        optimizer_config=cfg.optimizer,
     )
 
-    wandb_logger = WandbLogger(
-        project="25-verb-overgen",
-        save_dir=ensure_dir("./logs/wandb"),
-        log_model=False,  # Use PyTorch Lightning to log models
-        tags=["remove-causative-all-260119"]
-    )
-    wandb_logger.experiment.config.update(
+    logger_wandb = wandb_logger()
+    logger_wandb.experiment.config.update(
         {
-            "path_tokenizer": PATH_TOKENIZER,
-            "path_dataset_train": PATH_TRAIN,
-            "path_dataset_eval": PATH_EVAL,
-            "path_dataset_test": PATH_TEST,
+            "path_tokenizer": cfg.tokenizer,
+            "path_dataset_train": cfg.data.train.path,
+            "path_dataset_eval": cfg.data.val.path,
+            "path_dataset_test": cfg.data.test.path,
+            "model_config": OmegaConf.to_container(cfg.model, resolve=True),
+            "optimizer_config": OmegaConf.to_container(cfg.optimizer, resolve=True),
         }
     )
+    run_name = logger_wandb.experiment.name or "debug"
 
-    wandb_run = wandb_logger.experiment
-    run_name: str = wandb_run.name or "debug"
-    PATH_ROOT = ensure_dir(f"./var/train/20251230/{run_name}")
+    dir_run_root = ensure_dir(f"{cfg.output.root_dir}/{run_name}")
+    dir_checkpoint = ensure_dir(Path(dir_run_root) / "checkpoints")
 
+    # Setup model checkpoint callback
     callback_checkpoint = ModelCheckpoint(
-        dirpath=str(ensure_dir(Path(PATH_ROOT) / "checkpoints")),
+        dirpath=str(dir_checkpoint),
         filename=f"{run_name}-{{epoch:02d}}",
-        every_n_epochs=1,
-        save_top_k=-1,
+        save_last="link",
+        every_n_epochs=cfg.trainer.checkpoint.every_n_epochs,
+        save_top_k=cfg.trainer.checkpoint.save_top_k,
     )
 
-    trainer = ptl.Trainer(
-        callbacks=[EvalScampCallback(), TestTestsetCallback(), callback_checkpoint],
-        accelerator="gpu",
-        devices=1,
-        gradient_clip_val=1.0,
-        #
-        max_epochs=3,
-        log_every_n_steps=100,
-        val_check_interval=0.25,
-        #
-        logger=wandb_logger,
-        default_root_dir=PATH_ROOT,
-    )
+    # Create trainer with configuration
+    trainer_kwargs = {
+        "callbacks": [EvalScampCallback(), EvalTestsetCallback(), callback_checkpoint],
+        "accelerator": cfg.trainer.accelerator,
+        "devices": cfg.trainer.devices,
+        "gradient_clip_val": cfg.trainer.gradient_clip_val,
+        "max_epochs": cfg.trainer.max_epochs,
+        "log_every_n_steps": cfg.trainer.log_every_n_steps,
+        "val_check_interval": cfg.trainer.val_check_interval,
+        "logger": logger_wandb,
+        "default_root_dir": dir_run_root,
+    }
 
+    trainer = ptl.Trainer(**trainer_kwargs)
+
+    # Train the model
     trainer.fit(
         train_module,
         train_dataloaders=dataloader_train,
         val_dataloaders=dataloader_val,
     )
 
-    trainer.save_checkpoint(ensure_dir(Path(f"./var/train/20251230/{run_name}/checkpoints")) / f"{run_name}_final.pth")
-
+    # Test the model
     trainer.test(
         train_module,
         dataloaders=dataloader_test,
     )
 
-    wandb_logger.experiment.finish()
-    wandb_logger.finalize("success")
+    # Finalize wandb
+    logger_wandb.experiment.finish()
+    logger_wandb.finalize("success")
+
+
+if __name__ == "__main__":
+    from importlib.resources import files as resources
+    import sys
+    
+    config_dir = cast(Path, resources("verb_overgen.train.configs"))
+    run_name: str = wandb_logger().experiment.name or "debug"
+
+    # Initialize Hydra with compose API
+    with initialize_config_dir(version_base=None, config_dir=str(config_dir), job_name=run_name):
+        cfg = compose(config_name="config", overrides=sys.argv[1:])
+        main(cfg)

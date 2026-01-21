@@ -71,7 +71,11 @@ class EvalScampCallback(ptl.Callback):
 
     def on_validation_end(self, trainer: "ptl.Trainer", pl_module: "ptl.LightningModule") -> None:
         step = trainer.global_step
-        dataset_eval = pl.concat(self.eval_outputs).with_columns(pl.lit(step).alias("step"))
+        epoch = trainer.current_epoch
+        dataset_eval = pl.concat(self.eval_outputs).with_columns(
+            pl.lit(step).alias("step"),
+            pl.lit(epoch).alias("epoch"),
+        )
         # Save to parquet with step information in filename
-        output_path = self.eval_dir / f"eval_scamp_step_{step:08d}.parquet"
+        output_path = self.eval_dir / f"eval_scamp_step_{epoch:02d}_{step:08d}.parquet"
         dataset_eval.write_parquet(output_path)

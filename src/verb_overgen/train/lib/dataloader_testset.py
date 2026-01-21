@@ -55,8 +55,11 @@ class TestTestsetOnceCallback(ptl.Callback):
         self.test_dir: Path
         self.test_dataset: pl.DataFrame
 
-    def on_test_start(self, trainer: ptl.Trainer, pl_module: ptl.LightningModule) -> None:
+    def _ensure_dir(self, trainer: ptl.Trainer) -> None:
         self.test_dir = ensure_dir(Path(trainer.default_root_dir) / "test")
+
+    def on_test_start(self, trainer: ptl.Trainer, pl_module: ptl.LightningModule) -> None:
+        self._ensure_dir(trainer)
         self.test_outputs.clear()
 
     def on_test_batch_end(
@@ -78,7 +81,44 @@ class TestTestsetOnceCallback(ptl.Callback):
 class TestTestsetCallback(TestTestsetOnceCallback):
     def on_test_end(self, trainer: "ptl.Trainer", pl_module: "ptl.LightningModule") -> None:
         step = trainer.global_step
-        dataset_eval = pl.concat(self.test_outputs).with_columns(pl.lit(step).alias("step"))
+        epoch = trainer.current_epoch
+        dataset_eval = pl.concat(self.test_outputs).with_columns(
+            pl.lit(step).alias("step"),
+            pl.lit(epoch).alias("epoch"),
+        )
         # Save to parquet with step information in filename
-        output_path = self.test_dir / f"testset_step_{step:08d}.parquet"
+        output_path = self.test_dir / f"testset_step_{epoch:02d}_{step:08d}.parquet"
+        dataset_eval.write_parquet(output_path)
+
+class EvalTestsetCallback(ptl.Callback):
+    def __init__(self):
+        self.eval_outputs: list[pl.DataFrame] = []
+        self.eval_dir: Path
+
+    def on_fit_start(self, trainer: ptl.Trainer, pl_module: ptl.LightningModule) -> None:
+        self.eval_dir = ensure_dir(Path(trainer.default_root_dir) / "test")
+
+    def on_validation_start(self, trainer: ptl.Trainer, pl_module: ptl.LightningModule) -> None:
+        self.eval_outputs.clear()
+
+    def on_validation_batch_end(
+        self,
+        trainer: "ptl.Trainer",
+        pl_module: "ptl.LightningModule",
+        outputs: Any,
+        batch: Any,
+        batch_idx: int,
+        dataloader_idx: int = 0,
+    ) -> None:
+        self.eval_outputs.append(outputs)
+
+    def on_validation_end(self, trainer: "ptl.Trainer", pl_module: "ptl.LightningModule") -> None:
+        step = trainer.global_step
+        epoch = trainer.current_epoch
+        dataset_eval = pl.concat(self.eval_outputs).with_columns(
+            pl.lit(step).alias("step"),
+            pl.lit(epoch).alias("epoch"),
+        )
+        # Save to parquet with step information in filename
+        output_path = self.eval_dir / f"testset_step_{epoch:02d}_{step:08d}.parquet"
         dataset_eval.write_parquet(output_path)
