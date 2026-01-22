@@ -25,6 +25,7 @@ from verb_overgen.train.lib.dataloader_pychildes import DataBatchPyChildes, Data
 from verb_overgen.train.lib.dataloader_scamp import DatasetScamp, EvalScampCallback
 from verb_overgen.train.lib.dataloader_testset import DatasetTestset, EvalTestsetCallback
 from verb_overgen.train.lib.validate import eval_input_token_prob
+from verb_overgen.train.lib.utils import CacheCleanCallback
 from verb_overgen.util.misc_util import ensure_dir
 
 if TYPE_CHECKING:
@@ -249,7 +250,12 @@ def main(cfg: DictConfig):
 
     # Create trainer with configuration
     trainer_kwargs = {
-        "callbacks": [EvalScampCallback(), EvalTestsetCallback(), callback_checkpoint],
+        "callbacks": [
+            EvalScampCallback(),
+            EvalTestsetCallback(),
+            callback_checkpoint,
+            CacheCleanCallback(),
+        ],
         "accelerator": cfg.trainer.accelerator,
         "devices": cfg.trainer.devices,
         "gradient_clip_val": cfg.trainer.gradient_clip_val,

@@ -1,13 +1,14 @@
 #!/bin/bash
 
 #SBATCH --account=aip-fredashi
-#SBATCH --job-name=train-verb-overgen
+#SBATCH --job-name=remove-causative-all-260119
 #SBATCH --cpus-per-task=8
-#SBATCH --gres=gpu:l40s:1
+#SBATCH --gres=gpu:h100:1
 #SBATCH --mem=64G
 #SBATCH --time=3:00:00
-#SBATCH -o logs/slurm/slurm-%j.out.txt
-#SBATCH -e logs/slurm/slurm-%j.err.txt
+#SBATCH --array=23,59
+#SBATCH -o logs/slurm/slurm-%A_%a_%x.out.txt
+#SBATCH -e logs/slurm/slurm-%A_%a_%x.err.txt
 
 set -Eeuo pipefail
 fail() {
@@ -18,6 +19,6 @@ trap 'fail $LINENO' ERR
 tyw tg text "start_job name=${SLURM_JOB_NAME} id=${SLURM_JOB_ID} time=$(date '+%Y-%m-%d %H:%M:%S')"
 
 eval "$(direnv export bash)"
-python -m verb_overgen.train.train
+python -m verb_overgen.train.train seed=$SLURM_ARRAY_TASK_ID data.train.shuffle_seed=$SLURM_ARRAY_TASK_ID
 
 tyw tg text "finish_job name=${SLURM_JOB_NAME} id=${SLURM_JOB_ID} time=$(date '+%Y-%m-%d %H:%M:%S')"
