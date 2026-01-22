@@ -188,7 +188,7 @@ def main(cfg: DictConfig):
     dataloader_val = torch.utils.data.DataLoader(
         dataset_val,
         batch_size=cfg.data.val.batch_size,
-        shuffle=cfg.data.val.shuffle,
+        shuffle=False,
         collate_fn=dataset_val.collate_fn,
     )
 
@@ -200,7 +200,7 @@ def main(cfg: DictConfig):
     dataloader_test = torch.utils.data.DataLoader(
         dataset_test,
         batch_size=cfg.data.test.batch_size,
-        shuffle=cfg.data.test.shuffle,
+        shuffle=False,
         collate_fn=dataset_test.collate_fn,
     )
 
@@ -227,11 +227,10 @@ def main(cfg: DictConfig):
     logger_wandb.experiment.config.update(
         {
             "path_tokenizer": cfg.tokenizer,
-            "path_dataset_train": cfg.data.train.path,
-            "path_dataset_eval": cfg.data.val.path,
-            "path_dataset_test": cfg.data.test.path,
+            "data_config": OmegaConf.to_container(cfg.data, resolve=True),
             "model_config": OmegaConf.to_container(cfg.model, resolve=True),
             "optimizer_config": OmegaConf.to_container(cfg.optimizer, resolve=True),
+            "tags": ["remove-causative-all-260119"],
         }
     )
     run_name = logger_wandb.experiment.name or "debug"
@@ -290,5 +289,5 @@ if __name__ == "__main__":
 
     # Initialize Hydra with compose API
     with initialize_config_dir(version_base=None, config_dir=str(config_dir), job_name=run_name):
-        cfg = compose(config_name="config", overrides=sys.argv[1:])
+        cfg = compose(config_name="train", overrides=sys.argv[1:])
         main(cfg)
