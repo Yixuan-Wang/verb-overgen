@@ -75,3 +75,17 @@ def eval_input_token_prob(
     list_token_prob = unpad_sequence(token_prob, lengths=seq_length_without_bos, batch_first=True)
 
     return list_token_prob
+    
+def perplexity(token_probs: pl.Expr) -> pl.Expr:
+    """Compute sentence-level perplexity from token probabilities.
+    
+    Args:
+        token_probs (pl.Expr): A Polars `list(float)` expression representing a list of token probabilities.
+    
+    Returns:
+        A Polars `float` expression representing the perplexity.
+    """
+    nlls = token_probs.list.eval(pl.element().log().neg())
+    mean_nll = nlls.list.mean()
+    ppl = mean_nll.exp()
+    return ppl
