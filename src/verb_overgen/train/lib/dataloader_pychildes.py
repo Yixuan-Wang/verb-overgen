@@ -30,6 +30,7 @@ class DatasetPyChildes(Dataset[DataOnePyChildes]):
     dataframe: pl.DataFrame
     token_id_pad: int
     max_len: int
+    max_token_per_batch: int
     expr_keep: pl.Expr | Sequence[pl.Expr] | None
 
     def __init__(
@@ -51,9 +52,9 @@ class DatasetPyChildes(Dataset[DataOnePyChildes]):
             max_token_per_batch (int): Maximum number of tokens allowed per batch during sampling.
             expr_keep (pl.Expr | Sequence[pl.Expr] | None): Optional Polars expression(s) to filter data during collation. The expressions should evaluate to a boolean value, where True indicates the data should be included, and the expressions are combined using a logical AND operation. If None, no filtering is applied.
         """
-        self.dataframe = self._load_data(input_path)
         self.token_id_pad = token_id_pad
         self.max_len = max_len
+        self.max_token_per_batch = max_token_per_batch
         # self.expr_keep = expr_keep
         if expr_keep is not None:
             raise NotImplementedError("Filtering under packing is not yet implemented.")
@@ -61,6 +62,7 @@ class DatasetPyChildes(Dataset[DataOnePyChildes]):
         #     self.collate_fn = self.collate_fn_filter
         # else:
         #     self.collate_fn = self.collate_fn_no_filter
+        self.dataframe = self._load_data(input_path)
 
     def _load_data(self, input_path: Path):
         df = pl.read_parquet(input_path)
