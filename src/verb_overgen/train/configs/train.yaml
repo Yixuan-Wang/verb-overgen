@@ -6,13 +6,14 @@ defaults:
   - _self_
 
 # Seed for reproducibility
-seed: 42
+seed: 37
 
 # Experiment configuration
 experiment:
   name: "verb-overgen-training"
   tags:
-    - "remove-causative-all-260119"
+    - "full"
+    - "packing"
 
 # Wandb configuration
 wandb:
@@ -24,7 +25,7 @@ tokenizer: "./data/tokenizer/1024-wordlevel/tokenizer.json"
 
 # Output paths
 output:
-  root_dir: "./var/train/20251230"
+  root_dir: "./var/train/20260128"
 
 # Data loading
 # TODO: Add filtering to the logic.
@@ -33,7 +34,7 @@ data:
     path: "./data/pychildes/pychildes-morphosyntax_postprocess.20260102_20251024.parquet"
     batch_size: 256
     shuffle: true
-    shuffle_seed: 42
+    shuffle_seed: 37
   val:
     path: "./data/scamp/scamp-postprocessed-tokenized.20260101.parquet"
     batch_size: 512
