@@ -8,7 +8,7 @@ import tokenizers as hftk
 import torch
 import torch.nn.functional as nnf
 import transformers as hf
-from apfel import Lazy
+from apfel import Lazy, imperative
 from hydra import compose, initialize_config_dir
 from jaxtyping import Float, Int
 from lightning.pytorch.callbacks import ModelCheckpoint
@@ -73,7 +73,7 @@ class VerbOvergenTrainModule(ptl.LightningModule):
     @override
     def training_step(self, batch: DataBatchPyChildes, batch_idx: int):
         if batch["input_ids"].shape[0] == 0:
-            self.logger.experiment.alert(  # pyright:ignore
+            self.logger.experiment.alert(  # type: ignore
                 title="Skipped training step",
                 text=f"Skipped step {batch_idx} due to empty input",
                 level="warn",  # Options: "warn" or "error"
@@ -172,18 +172,19 @@ def main(cfg: DictConfig):
         input_path=Path(cfg.data.train.path),
         token_id_pad=token_id_pad,
         max_len=MAX_LEN,
-        max_token_per_batch=512 * 8,
+        max_token_per_batch=cfg.data.train.max_token_per_batch,
         # expr_keep=expr_keep,
     )
     randgen_train_shuffling = torch.Generator()
     if (seed_train_shuffling := OmegaConf.select(cfg, "data.train.shuffle_seed", default=None)) is not None:
         randgen_train_shuffling.manual_seed(seed_train_shuffling)
+
     dataloader_train = torch.utils.data.DataLoader(
         dataset_train,
-        batch_size=cfg.data.train.batch_size,
-        shuffle=cfg.data.train.shuffle,
+        # batch_size=cfg.data.train.batch_size,
+        # shuffle=cfg.data.train.shuffle,
+        batch_sampler=dataset_train.create_sampler(shuffle=randgen_train_shuffling if OmegaConf.select(cfg, "data.train.shuffle", default=False) else False),
         collate_fn=dataset_train.collate_fn,
-        generator=randgen_train_shuffling,
     )
 
     # # Create validation dataset and dataloader

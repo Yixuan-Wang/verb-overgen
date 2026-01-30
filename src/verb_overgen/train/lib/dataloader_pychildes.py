@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import posix
 from collections.abc import Callable, Generator, Sequence
 from pathlib import Path
 from typing import TypedDict, cast
@@ -109,8 +108,11 @@ class DatasetPyChildes(Dataset[DataOnePyChildes]):
         return SamplerBin(list_len, shuffle=shuffle, max_token_per_batch=self.max_token_per_batch)
 
     def collate_fn(self, batch: list[DataOnePyChildes]) -> DataBatchPyChildes:
-        data: DataBatchPyChildes = collate_pack_pad(batch, token_id_pad=self.token_id_pad, max_len=self.max_len)  # type: ignore
-        data["index"] = [item["index"] for item in batch]
+        data: DataBatchPyChildes = collate_pack_pad( # ty: ignore[invalid-assignment]
+            batch,
+            token_id_pad=self.token_id_pad,
+            max_len=self.max_len,
+        )  
         data["id_file_utterance"] = [item["id_file_utterance"] for item in batch]
         return data
 
@@ -191,13 +193,30 @@ if __name__ == "__main__":
     dataset = DatasetPyChildes(
         input_path=Path(PATH_TRAIN),
         token_id_pad=0,
-        max_token_per_batch=4096,
-        max_len=128,
+        max_token_per_batch=1920,
+        max_len=160,
         # expr_keep=expr_keep,
     )
-
+    
+    randgen_train_shuffling = torch.Generator()
+    randgen_train_shuffling.manual_seed(23)
     dataloader = DataLoader(
         dataset,
-        batch_sampler=dataset.create_sampler(shuffle=True),
+        batch_sampler=dataset.create_sampler(shuffle=randgen_train_shuffling),
+        # batch_size=256,
+        # shuffle=True,
         collate_fn=dataset.collate_fn,
+        # generator=randgen_train_shuffling,
     )
+    
+    list_count_effective_token = []
+    for i_batch, batch in enumerate(islice(dataloader, 10)):
+        # input_ids = batch["input_ids"]
+        # count_effective_token = ((input_ids != 0) & (input_ids != 1)).sum().item()
+        # list_count_effective_token.append(count_effective_token)
+        
+        __import__("IPython").embed(using=False)
+        # seq_length = batch["seq_length"]
+        # list_count_effective_token.append(seq_length.float().sum())
+    
+    count_effective_token = torch.tensor(list_count_effective_token)

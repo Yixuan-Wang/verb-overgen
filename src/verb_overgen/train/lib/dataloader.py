@@ -2,7 +2,6 @@ from collections.abc import Sequence
 from typing import TypedDict
 
 import torch
-from apfel import todo
 from jaxtyping import Int
 from torch import Tensor
 from torch.nn.utils.rnn import pad_sequence
@@ -99,7 +98,7 @@ def collate_pack_pad(batch: Sequence[DataOne], *, max_len: int, token_id_pad: in
     seq_length: Int[Tensor, "batch"] = torch.tensor(
         [seq_length_flat[start:end].sum() for start, end in list_ranges]
     )
-    
+
     doc_ids: Int[Tensor, "batch seq"] = pad_sequence(
         [torch.cat([
             torch.full((list_seq_length_flat[_idx_flat],), _idx_local)
@@ -115,9 +114,14 @@ def collate_pack_pad(batch: Sequence[DataOne], *, max_len: int, token_id_pad: in
         padding_value=token_id_pad,
     )
 
-    attention_mask_same_sentence = (doc_ids.unsqueeze(-1) == doc_ids.unsqueeze(-2))
-    attention_mask_not_padding = (_not_padding := input_ids != token_id_pad).unsqueeze(-1) & _not_padding.unsqueeze(-2)
-    attention_mask: Int[Tensor, "batch seq seq"] = torch.tril(attention_mask_same_sentence & attention_mask_not_padding).int()
+    # attention_mask: Int[Tensor, "batch 1 seq seq"]
+    # attention_mask_not_padding = (_not_padding := input_ids != token_id_pad).unsqueeze(-1) & _not_padding.unsqueeze(-2)
+    # if conversational_mask:
+    #     attention_mask = torch.tril(attention_mask_not_padding).int().unsqueeze(1)
+    # else:
+    #     attention_mask_same_sentence = (doc_ids.unsqueeze(-1) == doc_ids.unsqueeze(-2))
+    #     attention_mask = torch.tril(attention_mask_same_sentence & attention_mask_not_padding).int().unsqueeze(1)
+    attention_mask = input_ids.ne(token_id_pad).int()
 
     position_ids: Int[Tensor, "batch seq"] = pad_sequence(
         [torch.cat([batch[_idx_flat]["position_ids"] for _idx_flat in range(_start, _end)], dim=0) for _start, _end in list_ranges],
