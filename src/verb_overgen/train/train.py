@@ -2,13 +2,13 @@ from os import environ
 from pathlib import Path
 from typing import TYPE_CHECKING, cast
 
-from apfel import Lazy
 import lightning as ptl
 import polars as pl
 import tokenizers as hftk
 import torch
 import torch.nn.functional as nnf
 import transformers as hf
+from apfel import Lazy, imperative
 from hydra import compose, initialize_config_dir
 from jaxtyping import Float, Int
 from lightning.pytorch.callbacks import ModelCheckpoint
@@ -24,8 +24,8 @@ from verb_overgen.common.tokenize import BOS_TOKEN, EOS_TOKEN, PAD_TOKEN
 from verb_overgen.train.lib.dataloader_pychildes import DataBatchPyChildes, DatasetPyChildes
 from verb_overgen.train.lib.dataloader_scamp import DatasetScamp, EvalScampCallback
 from verb_overgen.train.lib.dataloader_testset import DatasetTestset, EvalTestsetCallback
-from verb_overgen.train.lib.validate import eval_input_token_prob
 from verb_overgen.train.lib.utils import CacheCleanCallback
+from verb_overgen.train.lib.validate import eval_input_token_prob
 from verb_overgen.util.misc_util import ensure_dir
 
 if TYPE_CHECKING:
@@ -73,7 +73,7 @@ class VerbOvergenTrainModule(ptl.LightningModule):
     @override
     def training_step(self, batch: DataBatchPyChildes, batch_idx: int):
         if batch["input_ids"].shape[0] == 0:
-            self.logger.experiment.alert(  # pyright:ignore
+            self.logger.experiment.alert(  # type: ignore
                 title="Skipped training step",
                 text=f"Skipped step {batch_idx} due to empty input",
                 level="warn",  # Options: "warn" or "error"
@@ -82,12 +82,13 @@ class VerbOvergenTrainModule(ptl.LightningModule):
             return self.skip_training_step()
 
         seq_length = batch["seq_length"]
-        self.log("train/seq_length_mean", seq_length.float().mean())
-        self.log("train/seq_length_std", seq_length.float().std())
+        # self.log("train/seq_length_mean", seq_length.float().mean())
+        # self.log("train/seq_length_std", seq_length.float().std())
         self.log("train/total_tokens", seq_length.float().sum(), reduce_fx="sum")
 
         input_ids: Int[Tensor, "batch max_len"] = batch["input_ids"]
-        attention_mask: Int[Tensor, "batch max_len"] = batch["attention_mask"]
+        attention_mask: Int[Tensor, "batch max_len max_len"] = batch["attention_mask"]
+        position_ids: Int[Tensor, "batch max_len"] = batch["position_ids"]
         labels: Int[Tensor, "batch max_len"] = torch.where(
             cast(Tensor, input_ids == self.model.config.pad_token_id),
             -100,
@@ -96,6 +97,7 @@ class VerbOvergenTrainModule(ptl.LightningModule):
 
         this: CausalLMOutput = self.model(
             input_ids=input_ids,
+            position_ids=position_ids,
             attention_mask=attention_mask,
             labels=labels,
         )
@@ -137,12 +139,13 @@ class VerbOvergenTrainModule(ptl.LightningModule):
     def test_step(self, batch, batch_idx):
         return self.eval_input_token_prob_step(batch)
 
+
 @Lazy
 def wandb_logger():
     # Setup Weights & Biases logger
     wandb_logger = WandbLogger(
         project="25-verb-overgen",
-        save_dir=ensure_dir("./logs"), # Wandb will create subdirectory here
+        save_dir=ensure_dir("./logs"),  # Wandb will create subdirectory here
         log_model=False,
     )
 
@@ -163,22 +166,25 @@ def main(cfg: DictConfig):
     )
     token_id_pad = tokenizer._tokenizer.token_to_id(PAD_TOKEN)
 
-    expr_keep = pl.col("features").list.contains(FEATURE_CAUSATIVE).not_()
+    # expr_keep = pl.col("features").list.contains(FEATURE_CAUSATIVE).not_()
 
     dataset_train = DatasetPyChildes(
         input_path=Path(cfg.data.train.path),
         token_id_pad=token_id_pad,
-        expr_keep=expr_keep,
+        max_len=MAX_LEN,
+        max_token_per_batch=cfg.data.train.max_token_per_batch,
+        # expr_keep=expr_keep,
     )
     randgen_train_shuffling = torch.Generator()
     if (seed_train_shuffling := OmegaConf.select(cfg, "data.train.shuffle_seed", default=None)) is not None:
         randgen_train_shuffling.manual_seed(seed_train_shuffling)
+
     dataloader_train = torch.utils.data.DataLoader(
         dataset_train,
-        batch_size=cfg.data.train.batch_size,
-        shuffle=cfg.data.train.shuffle,
+        # batch_size=cfg.data.train.batch_size,
+        # shuffle=cfg.data.train.shuffle,
+        batch_sampler=dataset_train.create_sampler(shuffle=randgen_train_shuffling if OmegaConf.select(cfg, "data.train.shuffle", default=False) else False),
         collate_fn=dataset_train.collate_fn,
-        generator=randgen_train_shuffling,
     )
 
     # # Create validation dataset and dataloader
@@ -231,7 +237,7 @@ def main(cfg: DictConfig):
             "data_config": OmegaConf.to_container(cfg.data, resolve=True),
             "model_config": OmegaConf.to_container(cfg.model, resolve=True),
             "optimizer_config": OmegaConf.to_container(cfg.optimizer, resolve=True),
-            "tags": ["remove-causative-all-260119"],
+            "tags": ["packing", "full"],
         }
     )
     run_name = logger_wandb.experiment.name or "debug"
@@ -281,9 +287,9 @@ def main(cfg: DictConfig):
 
 
 if __name__ == "__main__":
-    from importlib.resources import files as resources
     import sys
-    
+    from importlib.resources import files as resources
+
     config_dir = cast(Path, resources("verb_overgen.train.configs"))
     run_name: str = wandb_logger().experiment.name or "debug"
 
