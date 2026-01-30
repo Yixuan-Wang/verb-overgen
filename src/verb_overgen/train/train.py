@@ -81,16 +81,16 @@ class VerbOvergenTrainModule(ptl.LightningModule):
             )
             return self.skip_training_step()
 
-        # seq_length = batch["seq_length"]
+        seq_length = batch["seq_length"]
         # self.log("train/seq_length_mean", seq_length.float().mean())
         # self.log("train/seq_length_std", seq_length.float().std())
-        # self.log("train/total_tokens", seq_length.float().sum(), reduce_fx="sum")
+        self.log("train/total_tokens", seq_length.float().sum(), reduce_fx="sum")
 
         input_ids: Int[Tensor, "batch max_len"] = batch["input_ids"]
         attention_mask: Int[Tensor, "batch max_len max_len"] = batch["attention_mask"]
         position_ids: Int[Tensor, "batch max_len"] = batch["position_ids"]
         labels: Int[Tensor, "batch max_len"] = torch.where(
-            cast(Tensor, (input_ids == self.model.config.pad_token_id) | (input_ids == self.model.config.bos_token_id)),
+            cast(Tensor, input_ids == self.model.config.pad_token_id),
             -100,
             input_ids,
         )
