@@ -13,18 +13,18 @@ alt.data_transformers.enable("vegafusion")
 
 # %%
 run_metadata = {
-    "celestial-mountain-7": {
-        "run_kind": "full",
-        "run_seed": 42,
+    # "celestial-mountain-7": {
+    #     "run_kind": "full",
+    #     "run_seed": 42,
 
-        "postprocess_step": True,
-    },
-    "wobbly-thunder-8": {
-        "run_kind": "no-causative",
-        "run_seed": 42,
+    #     "postprocess_step": True,
+    # },
+    # "wobbly-thunder-8": {
+    #     "run_kind": "no-causative",
+    #     "run_seed": 42,
 
-        "postprocess_step": True,
-    },
+    #     "postprocess_step": True,
+    # },
     "swept-frost-12": {
         "run_kind": "no-causative",
         "run_seed": 37,
@@ -92,7 +92,7 @@ def _(run_name: str, metadata: dict[str, Any]):
     return df
 
 dataset_run = pl.concat(starmap(_, run_metadata.items()))
-# dataset_run.write_parquet("/home/tomyxw/projects/2025/verb-overgen/verb-overgen/var/train/20251230/aggregate/testset_20260123.parquet")
+dataset_run.write_parquet("/home/tomyxw/projects/2025/verb-overgen/verb-overgen/var/train/20251230/aggregate/testset_20260129.parquet")
 
 # %%
 def _(run_name: str, metadata: dict[str, Any]):
@@ -118,4 +118,4 @@ def _(run_name: str, metadata: dict[str, Any]):
     return df
 
 dataset_eval = pl.concat(starmap(_, run_metadata.items()))
-dataset_eval.write_parquet("/home/tomyxw/projects/2025/verb-overgen/verb-overgen/var/train/20251230/aggregate/eval_scamp_20260123.parquet")
+dataset_eval.write_parquet("/home/tomyxw/projects/2025/verb-overgen/verb-overgen/var/train/20251230/aggregate/eval_scamp_20260129.parquet")
