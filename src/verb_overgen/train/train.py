@@ -186,17 +186,17 @@ def main(cfg: DictConfig):
         generator=randgen_train_shuffling,
     )
 
-    # Create validation dataset and dataloader
-    dataset_val = DatasetScamp(
-        input_path=cfg.data.val.path,
-        token_id_pad=token_id_pad,
-    )
-    dataloader_val = torch.utils.data.DataLoader(
-        dataset_val,
-        batch_size=cfg.data.val.batch_size,
-        shuffle=False,
-        collate_fn=dataset_val.collate_fn,
-    )
+    # # Create validation dataset and dataloader
+    # dataset_val = DatasetScamp(
+    #     input_path=cfg.data.val.path,
+    #     token_id_pad=token_id_pad,
+    # )
+    # dataloader_val = torch.utils.data.DataLoader(
+    #     dataset_val,
+    #     batch_size=cfg.data.val.batch_size,
+    #     shuffle=False,
+    #     collate_fn=dataset_val.collate_fn,
+    # )
 
     # Create test dataset and dataloader
     dataset_test = DatasetTestset(
@@ -256,7 +256,7 @@ def main(cfg: DictConfig):
     # Create trainer with configuration
     trainer_kwargs = {
         "callbacks": [
-            EvalScampCallback(),
+            # EvalScampCallback(),
             EvalTestsetCallback(),
             callback_checkpoint,
             CacheCleanCallback(),
@@ -277,13 +277,7 @@ def main(cfg: DictConfig):
     trainer.fit(
         train_module,
         train_dataloaders=dataloader_train,
-        val_dataloaders=dataloader_val,
-    )
-
-    # Test the model
-    trainer.test(
-        train_module,
-        dataloaders=dataloader_test,
+        val_dataloaders=dataloader_test,
     )
 
     # Finalize wandb
