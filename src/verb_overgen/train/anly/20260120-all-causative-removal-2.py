@@ -4,7 +4,7 @@
 
 import marimo
 
-__generated_with = "0.19.6"
+__generated_with = "0.19.7"
 app = marimo.App(width="medium")
 
 
@@ -62,7 +62,12 @@ def _(pl):
 @app.cell
 def _(pl, ppl):
     dataset_input = pl.read_parquet("./data/testset/output/testset_llm_gen.final_postprocessed_20260114T1637.parquet")
-    dataset_run = pl.read_parquet("./var/train/20251230/aggregate/testset_20260123.parquet")
+    dataset_run = pl.read_parquet("./var/train/20251230/aggregate/testset_20260129.parquet")
+
+    assert (
+        dataset_run.select(pl.col("index_sentence").unique().sort()).to_series()
+        == dataset_input.select(pl.col("index_sentence").unique().sort()).to_series()
+    ).all()
 
     dataset_run = dataset_run.join(dataset_input.filter(pl.col(name="kind") != "sentence_context").select("index_sentence"), on="index_sentence", how="semi")
 
@@ -139,6 +144,7 @@ def _(dataset_transitive, pl):
     dataset_preemption_ogen = dataset_transitive.filter(pl.col("run_seed") != 42).group_by("run_seed", "verb", "index_pair", "step").agg(
         pl.col("ppl").filter(pl.col("run_kind") == "full").item().log().alias("nll_ogen_full"),
         pl.col("ppl").filter(pl.col("run_kind") == "no-causative").item().log().alias("nll_ogen_no_causative"),
+        pl.col("epoch").unique().item().alias("epoch"),
     )
 
     dataset_preemption_ogen
@@ -183,17 +189,6 @@ def _():
 
 
 @app.cell
-def _(dataset_preemption_ogen, pl):
-    dataset_preemption_ogen_epoch = dataset_preemption_ogen.filter(pl.col("step").is_in([19576, 39153, 58730])).with_columns(
-        pl.when(pl.col("step") == 19576).then(1)
-        .when(pl.col("step") == 39153).then(2)
-        .when(pl.col("step") == 58730).then(3)
-        .otherwise(pl.lit(None)).alias("epoch")
-    )
-    return (dataset_preemption_ogen_epoch,)
-
-
-@app.cell
 def _(
     checkbox_show_epoch_only,
     dataset_preemption_ogen,
@@ -203,7 +198,6 @@ def _(
     pl,
     sns,
     ttest,
-    verb_allow_list,
     verb_counts,
 ):
     if checkbox_show_epoch_only.value:
@@ -211,7 +205,7 @@ def _(
     else:
         _df = dataset_preemption_ogen
 
-    _df = _df.filter(pl.col("verb").is_in(verb_allow_list))
+    # _df = _df.filter(pl.col("verb").is_in(verb_allow_list))
 
     # _df = _df.filter(pl.col("run_seed") == 37)
 
@@ -278,15 +272,15 @@ def _(
 
 
 @app.cell
-def _(dataset_preemption_ogen_epoch, pl, verb_allow_list):
-    df_preemption = dataset_preemption_ogen_epoch.filter(pl.col("verb").is_in(verb_allow_list))
-    return (df_preemption,)
+def _(dataset_preemption_ogen, pl, verb_allow_list):
+    dataset_preemption_ogen_subset = dataset_preemption_ogen.filter(pl.col("verb").is_in(verb_allow_list))
+    return (dataset_preemption_ogen_subset,)
 
 
 @app.cell
 def _():
     palette_slides = ["#595959", "#3c78d8"]
-    return
+    return (palette_slides,)
 
 
 @app.cell
@@ -321,8 +315,8 @@ def _():
 
 
 @app.cell
-def _(df_preemption, pl, sns):
-    _df = df_preemption.filter(
+def _(dataset_preemption_ogen_subset, pl, sns):
+    _df = dataset_preemption_ogen_subset.filter(
         pl.col("verb") == "laugh",
         pl.col("run_seed") == 23,
     ).with_columns(
@@ -346,8 +340,8 @@ def _(df_preemption, pl, sns):
 
 
 @app.cell
-def _(df_preemption, pl):
-    _df = df_preemption.unpivot(
+def _(dataset_preemption_ogen_subset, pl):
+    _df = dataset_preemption_ogen_subset.unpivot(
         index=["index_pair", "epoch", "verb", "run_seed"],
         on=["nll_ogen_full", "nll_ogen_no_causative"],
         variable_name="train_set",
@@ -358,7 +352,33 @@ def _(df_preemption, pl):
         pl.when(pl.col("train_set") == "no_causative").then(pl.lit("no_preemption")).otherwise(pl.col("train_set")).alias("train_set")
     )
 
-    _df.write_parquet("./var/result/df_preemption_nll.parquet")
+    # _df.write_parquet("./var/result/df_preemption_nll.parquet")
+    return
+
+
+@app.cell
+def _(dataset_preemption_ogen, palette_slides, pl, sns):
+    _df = dataset_preemption_ogen.filter(
+        pl.col("verb") == "chortle",
+    ).sort(
+        "step", "index_pair", "run_seed" 
+    ).unpivot(
+        index=["index_pair", "epoch"],
+        on=["nll_ogen_full", "nll_ogen_no_causative"],
+        variable_name="train_set",
+        value_name="nll",
+    ).with_columns(
+        pl.col("train_set").str.replace_all("nll_ogen_", "")
+    )
+
+    sns.violinplot(
+        _df,
+        x="epoch",
+        y="nll",
+        hue="train_set",
+        palette=palette_slides,
+        # density_norm="count",
+    )
     return
 
 
