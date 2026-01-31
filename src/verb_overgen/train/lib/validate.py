@@ -58,7 +58,7 @@ def eval_input_token_prob(
 ) -> list[Float[Tensor, "ragged_seq"]]:
     outputs = model(
         input_ids=input_ids,
-        attention_mask=attention_mask,
+        # attention_mask=attention_mask,
     )
     prob: Float[Tensor, "batch seq vocab"] = outputs.logits.softmax(dim=-1)
 

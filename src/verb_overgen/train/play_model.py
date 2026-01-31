@@ -8,16 +8,17 @@ import torch
 import transformers as hf
 import tokenizers as hftk
 
-from verb_overgen.train.train import PAD_TOKEN, BOS_TOKEN, EOS_TOKEN, MAX_LEN, VerbOvergenTrainModule
+from verb_overgen.train.train import VerbOvergenTrainModule
+from verb_overgen.common.tokenize import BOS_TOKEN, EOS_TOKEN
 
 torch.set_default_device("cuda")
 
 # state = torch.load("/u501/y4466wan/projects/2025/verb-overgen/data/train/gpt2/verb-overgen-gpt2-a6cbd4_vital-microwave-3_final.pth", weights_only=True, map_location="cpu")
 tokenizer = hf.PreTrainedTokenizerFast(
-    tokenizer_object=hftk.Tokenizer.from_file("/u501/y4466wan/projects/2025/verb-overgen/data/tokenizer/1024-wordlevel/tokenizer.json"),
+    tokenizer_object=hftk.Tokenizer.from_file("./data/tokenizer/1024-wordlevel/tokenizer.json"),
 )
 
-module = VerbOvergenTrainModule.load_from_checkpoint("/u501/y4466wan/projects/2025/verb-overgen/data/train/gpt2/verb-overgen-gpt2-a6cbd4_silver-salad-4_final.pth", map_location="cuda")
+module = VerbOvergenTrainModule.load_from_checkpoint("./var/train/20260128/silver-durian-35/checkpoints/silver-durian-35-epoch=02.ckpt", map_location="cuda")
 model = module.model
 
 # model = hf.GPT2LMHeadModel(config=hf.GPT2Config(
@@ -145,3 +146,8 @@ def prefix_inspection():
         # first_token_probs.append(first_token_prob)
 
     return first_token_probs
+
+if __name__ == "__main__":
+    loop()
+    # compare()
+    # prefix_inspection()    

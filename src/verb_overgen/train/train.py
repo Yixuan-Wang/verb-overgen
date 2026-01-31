@@ -1,17 +1,15 @@
-from os import environ
 from pathlib import Path
-from typing import TYPE_CHECKING, cast
+from typing import TYPE_CHECKING, cast, Any
 
 import lightning as ptl
 import polars as pl
 import tokenizers as hftk
 import torch
-import torch.nn.functional as nnf
 import transformers as hf
-from apfel import Lazy, imperative
+from apfel import Lazy 
 from hydra import compose, initialize_config_dir
 from jaxtyping import Float, Int
-from lightning.pytorch.callbacks import ModelCheckpoint
+from lightning.pytorch.callbacks import ModelCheckpoint, LearningRateMonitor
 from lightning.pytorch.loggers import WandbLogger
 from loguru import logger
 from omegaconf import DictConfig, OmegaConf
@@ -19,10 +17,10 @@ from torch import Tensor
 from transformers.modeling_outputs import CausalLMOutput
 from typing_extensions import override
 
-from verb_overgen.common.features import FEATURE_CAUSATIVE
-from verb_overgen.common.tokenize import BOS_TOKEN, EOS_TOKEN, PAD_TOKEN
+# from verb_overgen.common.features import FEATURE_CAUSATIVE
+from verb_overgen.common.tokenize import BOS_TOKEN, PAD_TOKEN
 from verb_overgen.train.lib.dataloader_pychildes import DataBatchPyChildes, DatasetPyChildes
-from verb_overgen.train.lib.dataloader_scamp import DatasetScamp, EvalScampCallback
+# from verb_overgen.train.lib.dataloader_scamp import DatasetScamp, EvalScampCallback
 from verb_overgen.train.lib.dataloader_testset import DatasetTestset, EvalTestsetCallback
 from verb_overgen.train.lib.utils import CacheCleanCallback
 from verb_overgen.train.lib.validate import eval_input_token_prob
@@ -87,8 +85,8 @@ class VerbOvergenTrainModule(ptl.LightningModule):
         self.log("train/total_tokens", seq_length.float().sum(), reduce_fx="sum")
 
         input_ids: Int[Tensor, "batch max_len"] = batch["input_ids"]
-        attention_mask: Int[Tensor, "batch max_len max_len"] = batch["attention_mask"]
-        position_ids: Int[Tensor, "batch max_len"] = batch["position_ids"]
+        # attention_mask: Int[Tensor, "batch max_len max_len"] = batch["attention_mask"]
+        # position_ids: Int[Tensor, "batch max_len"] = batch["position_ids"]
         labels: Int[Tensor, "batch max_len"] = torch.where(
             cast(Tensor, input_ids == self.model.config.pad_token_id),
             -100,
@@ -97,15 +95,14 @@ class VerbOvergenTrainModule(ptl.LightningModule):
 
         this: CausalLMOutput = self.model(
             input_ids=input_ids,
-            position_ids=position_ids,
-            attention_mask=attention_mask,
+            # position_ids=position_ids,
+            # attention_mask=attention_mask,
             labels=labels,
         )
         # logits: Float[Tensor, "batch seq vocab"] = this.logits
         loss: Float[Tensor, ""] = this.loss  # pyright: ignore[reportAssignmentType]
 
         self.log("train/loss", loss)
-
         return loss
 
     def skip_training_step(self):
@@ -115,6 +112,19 @@ class VerbOvergenTrainModule(ptl.LightningModule):
         first_param = next(param for param in self.model.parameters() if param.requires_grad)
         dummy_loss = first_param.sum() * 0.0
         return dummy_loss
+
+    @override
+    def on_before_optimizer_step(self, optimizer):
+        """Log gradient norms before optimizer step."""        
+        if self.trainer.global_step % self.trainer.log_every_n_steps != 0: # ty: ignore[unresolved-attribute]
+            return  # Only log at specified intervals
+            
+        # Compute gradient norm
+        grad_norm = torch.nn.utils.clip_grad_norm_(
+            self.model.parameters(),
+            max_norm=float("inf"),  # Just compute, don't clip
+        )
+        self.log("train/grad_norm", grad_norm)
 
     def eval_input_token_prob_step(self, batch):
         result: list[Float[Tensor, "ragged_seq"]] = eval_input_token_prob(
@@ -158,7 +168,7 @@ def main(cfg: DictConfig):
     logger.info(OmegaConf.to_yaml(cfg))
 
     # Set seed for reproducibility
-    ptl.seed_everything(cfg.seed)
+    # ptl.seed_everything(cfg.seed)
 
     # Load tokenizer
     tokenizer = hf.PreTrainedTokenizerFast(
@@ -176,14 +186,16 @@ def main(cfg: DictConfig):
         # expr_keep=expr_keep,
     )
     randgen_train_shuffling = torch.Generator()
-    if (seed_train_shuffling := OmegaConf.select(cfg, "data.train.shuffle_seed", default=None)) is not None:
-        randgen_train_shuffling.manual_seed(seed_train_shuffling)
+    # if (seed_train_shuffling := OmegaConf.select(cfg, "data.train.shuffle_seed", default=None)) is not None:
+    #     randgen_train_shuffling.manual_seed(seed_train_shuffling)
 
     dataloader_train = torch.utils.data.DataLoader(
         dataset_train,
         # batch_size=cfg.data.train.batch_size,
         # shuffle=cfg.data.train.shuffle,
-        batch_sampler=dataset_train.create_sampler(shuffle=randgen_train_shuffling if OmegaConf.select(cfg, "data.train.shuffle", default=False) else False),
+        batch_sampler=dataset_train.create_sampler(
+            shuffle=randgen_train_shuffling # if OmegaConf.select(cfg, "data.train.shuffle", default=False) else False
+        ),
         collate_fn=dataset_train.collate_fn,
     )
 
@@ -221,7 +233,10 @@ def main(cfg: DictConfig):
         n_head=cfg.model.n_head,
         pad_token_id=tokenizer._tokenizer.token_to_id(PAD_TOKEN),
         bos_token_id=tokenizer._tokenizer.token_to_id(BOS_TOKEN),
-        eos_token_id=tokenizer._tokenizer.token_to_id(EOS_TOKEN),
+
+        # Note on the EOS token:
+        # In the new setting, the EOS token is no longer kept.
+        eos_token_id=tokenizer._tokenizer.token_to_id(BOS_TOKEN),
     )
 
     # Create training module
@@ -255,16 +270,17 @@ def main(cfg: DictConfig):
     )
 
     # Create trainer with configuration
-    trainer_kwargs = {
+    trainer_kwargs: dict[str, Any] = {
         "callbacks": [
             # EvalScampCallback(),
             EvalTestsetCallback(),
             callback_checkpoint,
             CacheCleanCallback(),
+            LearningRateMonitor(log_momentum=True, log_weight_decay=True),
         ],
         "accelerator": cfg.trainer.accelerator,
         "devices": cfg.trainer.devices,
-        "gradient_clip_val": cfg.trainer.gradient_clip_val,
+        # "gradient_clip_val": cfg.trainer.gradient_clip_val,
         "max_epochs": cfg.trainer.max_epochs,
         "log_every_n_steps": cfg.trainer.log_every_n_steps,
         "val_check_interval": cfg.trainer.val_check_interval,
