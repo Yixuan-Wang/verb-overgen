@@ -1,15 +1,16 @@
+from __future__ import annotations
 from pathlib import Path
-from typing import TYPE_CHECKING, cast, Any
+from typing import TYPE_CHECKING, Any, cast
 
 import lightning as ptl
 import polars as pl
 import tokenizers as hftk
 import torch
 import transformers as hf
-from apfel import Lazy 
+from apfel import Lazy
 from hydra import compose, initialize_config_dir
 from jaxtyping import Float, Int
-from lightning.pytorch.callbacks import ModelCheckpoint, LearningRateMonitor
+from lightning.pytorch.callbacks import LearningRateMonitor, ModelCheckpoint
 from lightning.pytorch.loggers import WandbLogger
 from loguru import logger
 from omegaconf import DictConfig, OmegaConf
@@ -20,6 +21,7 @@ from typing_extensions import override
 # from verb_overgen.common.features import FEATURE_CAUSATIVE
 from verb_overgen.common.tokenize import BOS_TOKEN, PAD_TOKEN
 from verb_overgen.train.lib.dataloader_pychildes import DataBatchPyChildes, DatasetPyChildes
+
 # from verb_overgen.train.lib.dataloader_scamp import DatasetScamp, EvalScampCallback
 from verb_overgen.train.lib.dataloader_testset import DatasetTestset, EvalTestsetCallback
 from verb_overgen.train.lib.utils import CacheCleanCallback
@@ -28,6 +30,7 @@ from verb_overgen.util.misc_util import ensure_dir
 
 if TYPE_CHECKING:
     from lightning.pytorch.utilities.types import LRSchedulerConfigType, OptimizerLRSchedulerConfig
+    from wandb.sdk.wandb_run import Run as WandbRun
 
 # Actual max length is 132
 MAX_LEN: int = 160
@@ -115,10 +118,10 @@ class VerbOvergenTrainModule(ptl.LightningModule):
 
     @override
     def on_before_optimizer_step(self, optimizer):
-        """Log gradient norms before optimizer step."""        
-        if self.trainer.global_step % self.trainer.log_every_n_steps != 0: # ty: ignore[unresolved-attribute]
+        """Log gradient norms before optimizer step."""
+        if self.trainer.global_step % self.trainer.log_every_n_steps != 0:  # ty: ignore[unresolved-attribute]
             return  # Only log at specified intervals
-            
+
         # Compute gradient norm
         grad_norm = torch.nn.utils.clip_grad_norm_(
             self.model.parameters(),
@@ -162,144 +165,302 @@ def wandb_logger():
     return wandb_logger
 
 
-def main(cfg: DictConfig):
-    # Print configuration
-    logger.info("Training configuration:")
-    logger.info(OmegaConf.to_yaml(cfg))
+class TrainingSession:
+    """Manages the training session lifecycle including data loading, model setup, and training execution."""
 
-    # Set seed for reproducibility
-    # ptl.seed_everything(cfg.seed)
+    cfg: DictConfig
+    run_name: str
 
-    # Load tokenizer
-    tokenizer = hf.PreTrainedTokenizerFast(
-        tokenizer_object=hftk.Tokenizer.from_file(cfg.tokenizer),
-    )
-    token_id_pad = tokenizer._tokenizer.token_to_id(PAD_TOKEN)
+    tokenizer: hf.PreTrainedTokenizerFast
+    token_id_pad: int
 
-    # expr_keep = pl.col("features").list.contains(FEATURE_CAUSATIVE).not_()
+    dataset_train: DatasetPyChildes
+    dataset_test: DatasetTestset
+    dataloader_train: torch.utils.data.DataLoader
+    dataloader_test: torch.utils.data.DataLoader
 
-    dataset_train = DatasetPyChildes(
-        input_path=Path(cfg.data.train.path),
-        token_id_pad=token_id_pad,
-        max_len=MAX_LEN,
-        max_token_per_batch=cfg.data.train.max_token_per_batch,
-        # expr_keep=expr_keep,
-    )
-    randgen_train_shuffling = torch.Generator()
-    # if (seed_train_shuffling := OmegaConf.select(cfg, "data.train.shuffle_seed", default=None)) is not None:
-    #     randgen_train_shuffling.manual_seed(seed_train_shuffling)
+    model_config: hf.PretrainedConfig
+    train_module: VerbOvergenTrainModule
 
-    dataloader_train = torch.utils.data.DataLoader(
-        dataset_train,
-        # batch_size=cfg.data.train.batch_size,
-        # shuffle=cfg.data.train.shuffle,
-        batch_sampler=dataset_train.create_sampler(
-            shuffle=randgen_train_shuffling # if OmegaConf.select(cfg, "data.train.shuffle", default=False) else False
-        ),
-        collate_fn=dataset_train.collate_fn,
-    )
+    logger_wandb: WandbLogger
 
-    # # Create validation dataset and dataloader
-    # dataset_val = DatasetScamp(
-    #     input_path=cfg.data.val.path,
-    #     token_id_pad=token_id_pad,
-    # )
-    # dataloader_val = torch.utils.data.DataLoader(
-    #     dataset_val,
-    #     batch_size=cfg.data.val.batch_size,
-    #     shuffle=False,
-    #     collate_fn=dataset_val.collate_fn,
-    # )
+    dir_run_root: Path
+    dir_checkpoint: Path
 
-    # Create test dataset and dataloader
-    dataset_test = DatasetTestset(
-        input_path=cfg.data.test.path,
-        token_id_pad=token_id_pad,
-    )
-    dataloader_test = torch.utils.data.DataLoader(
-        dataset_test,
-        batch_size=cfg.data.test.batch_size,
-        shuffle=False,
-        collate_fn=dataset_test.collate_fn,
-    )
+    trainer: ptl.Trainer
 
-    # Create model configuration
-    model_config = hf.GPT2Config(
-        vocab_size=tokenizer.vocab_size,
-        n_positions=cfg.model.n_positions,
-        n_ctx=cfg.model.n_ctx,
-        n_embd=cfg.model.n_embd,
-        n_layer=cfg.model.n_layer,
-        n_head=cfg.model.n_head,
-        pad_token_id=tokenizer._tokenizer.token_to_id(PAD_TOKEN),
-        bos_token_id=tokenizer._tokenizer.token_to_id(BOS_TOKEN),
+    def __init__(self, cfg: DictConfig):
+        self.cfg = cfg
+        logger.info(OmegaConf.to_yaml(self.cfg))
 
-        # Note on the EOS token:
-        # In the new setting, the EOS token is no longer kept.
-        eos_token_id=tokenizer._tokenizer.token_to_id(BOS_TOKEN),
-    )
+        # Set seed for reproducibility
+        if OmegaConf.select(self.cfg, "seed", default=None) is not None:
+            ptl.seed_everything(self.cfg.seed)
 
-    # Create training module
-    train_module = VerbOvergenTrainModule(
-        model_config=model_config,
-        optimizer_config=cfg.optimizer,
-    )
 
-    logger_wandb = wandb_logger()
-    logger_wandb.experiment.config.update(
-        {
-            "path_tokenizer": cfg.tokenizer,
-            "data_config": OmegaConf.to_container(cfg.data, resolve=True),
-            "model_config": OmegaConf.to_container(cfg.model, resolve=True),
-            "optimizer_config": OmegaConf.to_container(cfg.optimizer, resolve=True),
-            "tags": ["packing", "full"],
+    def setup_tokenizer(self, *, tokenizer_path: str | None = None) -> hf.PreTrainedTokenizerFast:
+        """Load and configure the tokenizer.
+        
+        Args:
+            tokenizer_path (str | None): Optional path to tokenizer file. If None, uses self.cfg.tokenizer.
+
+        Prerequisites:
+            - self.cfg.tokenizer: Path to tokenizer file
+
+        Sets:
+            - self.tokenizer: PreTrainedTokenizerFast instance
+            - self.token_id_pad: Pad token ID
+        """
+        tokenizer_path = str(self.cfg.tokenizer) if tokenizer_path is None else tokenizer_path
+        self.tokenizer = hf.PreTrainedTokenizerFast(
+            tokenizer_object=hftk.Tokenizer.from_file(tokenizer_path),
+        )
+        self.token_id_pad = self.tokenizer._tokenizer.token_to_id(PAD_TOKEN)
+
+        return self.tokenizer
+
+    def setup_datasets(
+        self,
+        *,
+        train_data_path: str | None = None,
+        test_data_path: str | None = None,
+    ) -> dict[str, torch.utils.data.Dataset]:
+        """Create training and test datasets.
+        
+        Args:
+            train_data_path (str | None): Optional path to training data. If None, uses self.cfg.data.train.path.
+            test_data_path (str | None): Optional path to test data. If None, uses self.cfg.data.test.path.
+
+        Prerequisites:
+            - self.token_id_pad: Pad token ID from setup_tokenizer()
+            - self.cfg.data.train: Path to training data
+            - self.cfg.data.test: Path to test data
+
+        Sets:
+            - self.dataset_train: DatasetPyChildes instance
+            - self.dataset_test: DatasetTestset instance
+        """
+        assert self.token_id_pad is not None, "Tokenizer must be setup first"
+        
+        train_data_path = str(self.cfg.data.train.path) if train_data_path is None else train_data_path
+        test_data_path = str(self.cfg.data.test.path) if test_data_path is None else test_data_path
+
+        self.dataset_train = DatasetPyChildes(
+            input_path=Path(self.cfg.data.train.path),
+            token_id_pad=self.token_id_pad,
+            max_len=MAX_LEN,
+            max_token_per_batch=self.cfg.data.train.max_token_per_batch,
+        )
+
+        self.dataset_test = DatasetTestset(
+            input_path=self.cfg.data.test.path,
+            token_id_pad=self.token_id_pad,
+        )
+
+        return {
+            "train": self.dataset_train,
+            "test": self.dataset_test,
         }
-    )
-    run_name = logger_wandb.experiment.name or "debug"
 
-    dir_run_root = ensure_dir(f"{cfg.output.root_dir}/{run_name}")
-    dir_checkpoint = ensure_dir(Path(dir_run_root) / "checkpoints")
+    def setup_dataloaders(self) -> dict[str, torch.utils.data.DataLoader]:
+        """Create training and test dataloaders.
 
-    # Setup model checkpoint callback
-    callback_checkpoint = ModelCheckpoint(
-        dirpath=str(dir_checkpoint),
-        filename=f"{run_name}-{{epoch:02d}}",
-        save_last="link",
-        every_n_epochs=cfg.trainer.checkpoint.every_n_epochs,
-        save_top_k=cfg.trainer.checkpoint.save_top_k,
-    )
+        Prerequisites:
+            - self.dataset_train: Training dataset from setup_datasets()
+            - self.dataset_test: Test dataset from setup_datasets()
+            - self.cfg.data.train: Training data configuration
+            - self.cfg.data.test: Test data configuration
 
-    # Create trainer with configuration
-    trainer_kwargs: dict[str, Any] = {
-        "callbacks": [
-            # EvalScampCallback(),
-            EvalTestsetCallback(),
-            callback_checkpoint,
-            CacheCleanCallback(),
-            LearningRateMonitor(log_momentum=True, log_weight_decay=True),
-        ],
-        "accelerator": cfg.trainer.accelerator,
-        "devices": cfg.trainer.devices,
-        # "gradient_clip_val": cfg.trainer.gradient_clip_val,
-        "max_epochs": cfg.trainer.max_epochs,
-        "log_every_n_steps": cfg.trainer.log_every_n_steps,
-        "val_check_interval": cfg.trainer.val_check_interval,
-        "logger": logger_wandb,
-        "default_root_dir": dir_run_root,
-    }
+        Sets:
+            - self.dataloader_train: DataLoader for training
+            - self.dataloader_test: DataLoader for testing
+        """
+        assert self.dataset_train is not None and self.dataset_test is not None, "Datasets must be setup first"
 
-    trainer = ptl.Trainer(**trainer_kwargs)
+        randgen_train_shuffling = torch.Generator()
+        if (seed_train_shuffling := OmegaConf.select(self.cfg, "data.train.shuffle_seed", default=None)) is not None:
+            randgen_train_shuffling.manual_seed(seed_train_shuffling)
 
-    # Train the model
-    trainer.fit(
-        train_module,
-        train_dataloaders=dataloader_train,
-        val_dataloaders=dataloader_test,
-    )
+        self.dataloader_train = torch.utils.data.DataLoader(
+            self.dataset_train,
+            batch_sampler=self.dataset_train.create_sampler(shuffle=randgen_train_shuffling),
+            collate_fn=self.dataset_train.collate_fn,
+        )
 
-    # Finalize wandb
-    logger_wandb.experiment.finish()
-    logger_wandb.finalize("success")
+        self.dataloader_test = torch.utils.data.DataLoader(
+            self.dataset_test,
+            batch_size=self.cfg.data.test.batch_size,
+            shuffle=False,
+            collate_fn=self.dataset_test.collate_fn,
+        )
+
+        return {
+            "train": self.dataloader_train,
+            "test": self.dataloader_test,
+        }
+
+    def setup_model(self) -> torch.nn.Module:
+        """Create model configuration and training module.
+
+        Prerequisites:
+            - self.tokenizer: Tokenizer, from setup_tokenizer()
+            - self.cfg.model: Model configuration
+            - self.cfg.optimizer: Optimizer configuration
+
+        Sets:
+            - self.model_config: GPT2Config instance
+            - self.train_module: VerbOvergenTrainModule instance
+        """
+        assert self.tokenizer is not None, "Tokenizer must be setup first"
+
+        self.model_config = hf.GPT2Config(
+            vocab_size=self.tokenizer.vocab_size,
+            n_positions=self.cfg.model.n_positions,
+            n_ctx=self.cfg.model.n_ctx,
+            n_embd=self.cfg.model.n_embd,
+            n_layer=self.cfg.model.n_layer,
+            n_head=self.cfg.model.n_head,
+            pad_token_id=self.tokenizer._tokenizer.token_to_id(PAD_TOKEN),
+            bos_token_id=self.tokenizer._tokenizer.token_to_id(BOS_TOKEN),
+            # Note on the EOS token:
+            # In the new setting, the EOS token is no longer kept.
+            eos_token_id=self.tokenizer._tokenizer.token_to_id(BOS_TOKEN),
+        )
+
+        self.train_module = VerbOvergenTrainModule(
+            model_config=self.model_config,
+            optimizer_config=self.cfg.optimizer,
+        )
+
+        return self.train_module.model
+
+    def setup_logging(self) -> WandbRun | None:
+        """Configure wandb logger and directories.
+
+        Prerequisites:
+            - self.cfg.tokenizer: Path to tokenizer (for logging)
+            - self.cfg.data: Data configuration (for logging)
+            - self.cfg.model: Model configuration (for logging)
+            - self.cfg.optimizer: Optimizer configuration (for logging)
+            - self.cfg.output.root_dir: Root directory for outputs
+
+        Sets:
+            - self.logger_wandb: WandbLogger instance
+            - self.run_name: Experiment run name (from wandb or "debug")
+            - self.dir_run_root: Root output directory for this run
+            - self.dir_checkpoint: Checkpoint subdirectory
+        """
+        self.logger_wandb = wandb_logger()
+
+        if self.logger_wandb.experiment:
+            self.logger_wandb.experiment.config.update(
+                {
+                    "path_tokenizer": self.cfg.tokenizer,
+                    "data_config": OmegaConf.to_container(self.cfg.data, resolve=True),
+                    "model_config": OmegaConf.to_container(self.cfg.model, resolve=True),
+                    "optimizer_config": OmegaConf.to_container(self.cfg.optimizer, resolve=True),
+                    "tags": ["packing", "full"],
+                }
+            )
+            self.run_name = self.logger_wandb.experiment.name or "debug"
+        else:
+            self.run_name = "debug"
+
+        self.dir_run_root = ensure_dir(Path(f"{self.cfg.output.root_dir}/{self.run_name}"))
+        self.dir_checkpoint = ensure_dir(self.dir_run_root / "checkpoints")
+
+        return self.logger_wandb.experiment if self.logger_wandb.experiment else None
+
+    def setup_trainer(self) -> ptl.Trainer:
+        """Create PyTorch Lightning trainer with callbacks.
+
+        Prerequisites:
+            - self.logger_wandb: From setup_logging()
+            - self.run_name: From setup_logging()
+            - self.dir_checkpoint: From setup_logging()
+            - self.dir_run_root: From setup_logging()
+            - self.cfg.trainer: Trainer configuration
+
+        Sets:
+            - self.trainer: PyTorch Lightning Trainer instance
+        """
+        assert self.logger_wandb is not None and self.run_name is not None, "Logging must be setup first"
+        assert self.dir_checkpoint is not None and self.dir_run_root is not None, "Directories must be setup first"
+
+        callback_checkpoint = ModelCheckpoint(
+            dirpath=str(self.dir_checkpoint),
+            filename=f"{self.run_name}-{{epoch:02d}}",
+            save_last="link",
+            every_n_epochs=self.cfg.trainer.checkpoint.every_n_epochs,
+            save_top_k=self.cfg.trainer.checkpoint.save_top_k,
+        )
+
+        trainer_kwargs: dict[str, Any] = {
+            "callbacks": [
+                EvalTestsetCallback(),
+                callback_checkpoint,
+                CacheCleanCallback(),
+                LearningRateMonitor(),
+            ],
+            "accelerator": self.cfg.trainer.accelerator,
+            "devices": self.cfg.trainer.devices,
+            "max_epochs": self.cfg.trainer.max_epochs,
+            "log_every_n_steps": self.cfg.trainer.log_every_n_steps,
+            "val_check_interval": self.cfg.trainer.val_check_interval,
+            "logger": self.logger_wandb,
+            "default_root_dir": self.dir_run_root,
+        }
+
+        self.trainer = ptl.Trainer(**trainer_kwargs)
+        return self.trainer
+
+    def train(self) -> None:
+        """Execute the training loop.
+
+        Prerequisites:
+            - self.trainer: From setup_trainer()
+            - self.train_module: From setup_model()
+            - self.dataloader_train: From setup_dataloaders()
+            - self.dataloader_test: From setup_dataloaders()
+        """
+        assert self.trainer is not None and self.train_module is not None, "Trainer and module must be setup first"
+        assert self.dataloader_train is not None and self.dataloader_test is not None, "Dataloaders must be setup first"
+
+        self.trainer.fit(
+            self.train_module,
+            train_dataloaders=self.dataloader_train,
+            val_dataloaders=self.dataloader_test,
+        )
+
+    def finalize(self) -> None:
+        """Clean up and finalize logging.
+
+        Prerequisites:
+            - self.logger_wandb: From setup_logging()
+        """
+        assert self.logger_wandb is not None, "Logger must be setup first"
+
+        self.logger_wandb.experiment.finish()
+        self.logger_wandb.finalize("success")
+
+    def setup(self) -> None:
+        """Run all setup steps in order."""
+        self.setup_tokenizer()
+        self.setup_datasets()
+        self.setup_dataloaders()
+        self.setup_model()
+        self.setup_logging()
+        self.setup_trainer()
+
+    def run(self) -> None:
+        self.train()
+        self.finalize()
+
+
+def main(cfg: DictConfig):
+    session = TrainingSession(cfg)
+    session.setup()
+    session.run()
 
 
 if __name__ == "__main__":
@@ -307,9 +468,8 @@ if __name__ == "__main__":
     from importlib.resources import files as resources
 
     config_dir = cast(Path, resources("verb_overgen.train.configs"))
-    run_name: str = wandb_logger().experiment.name or "debug"
 
     # Initialize Hydra with compose API
-    with initialize_config_dir(version_base=None, config_dir=str(config_dir), job_name=run_name):
+    with initialize_config_dir(version_base=None, config_dir=str(config_dir), job_name="train"):
         cfg = compose(config_name="train", overrides=sys.argv[1:])
         main(cfg)

@@ -6,7 +6,7 @@ defaults:
   - _self_
 
 # Seed for reproducibility
-seed: 23
+seed: null
 
 # Experiment configuration
 experiment:
@@ -34,7 +34,7 @@ data:
     path: "./data/pychildes/pychildes-morphosyntax_postprocess.20260102_20251024.parquet"
     # batch_size: 256
     shuffle: true
-    shuffle_seed: 23
+    shuffle_seed: null
     max_token_per_batch: 1920
   val:
     path: "./data/scamp/scamp-postprocessed-tokenized.20260101.parquet"
