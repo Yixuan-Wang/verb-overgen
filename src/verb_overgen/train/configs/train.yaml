@@ -10,16 +10,16 @@ seed: null
 
 # Experiment configuration
 experiment:
-  name: "verb-overgen-training"
-  tags:
-    - "full"
-    - "packing"
+  initial_weights: null
 
 # Wandb configuration
 wandb:
   project: "25-verb-overgen"
   log_model: false
   save_dir: "./logs/wandb"
+  tags:
+    - packing
+    - full
 
 tokenizer: "./data/tokenizer/1024-wordlevel/tokenizer.json"
 

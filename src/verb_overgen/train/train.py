@@ -1,4 +1,6 @@
 from __future__ import annotations
+
+from collections.abc import Collection
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, cast
 
@@ -197,10 +199,9 @@ class TrainingSession:
         if OmegaConf.select(self.cfg, "seed", default=None) is not None:
             ptl.seed_everything(self.cfg.seed)
 
-
     def setup_tokenizer(self, *, tokenizer_path: str | None = None) -> hf.PreTrainedTokenizerFast:
         """Load and configure the tokenizer.
-        
+
         Args:
             tokenizer_path (str | None): Optional path to tokenizer file. If None, uses self.cfg.tokenizer.
 
@@ -226,7 +227,7 @@ class TrainingSession:
         test_data_path: str | None = None,
     ) -> dict[str, torch.utils.data.Dataset]:
         """Create training and test datasets.
-        
+
         Args:
             train_data_path (str | None): Optional path to training data. If None, uses self.cfg.data.train.path.
             test_data_path (str | None): Optional path to test data. If None, uses self.cfg.data.test.path.
@@ -241,7 +242,7 @@ class TrainingSession:
             - self.dataset_test: DatasetTestset instance
         """
         assert self.token_id_pad is not None, "Tokenizer must be setup first"
-        
+
         train_data_path = str(self.cfg.data.train.path) if train_data_path is None else train_data_path
         test_data_path = str(self.cfg.data.test.path) if test_data_path is None else test_data_path
 
@@ -353,13 +354,16 @@ class TrainingSession:
         self.logger_wandb = wandb_logger()
 
         if self.logger_wandb.experiment:
+            # Get tags from config, default to empty list if not specified
+            tags = OmegaConf.select(self.cfg, "wandb.tags", default=[])
+
             self.logger_wandb.experiment.config.update(
                 {
                     "path_tokenizer": self.cfg.tokenizer,
                     "data_config": OmegaConf.to_container(self.cfg.data, resolve=True),
                     "model_config": OmegaConf.to_container(self.cfg.model, resolve=True),
                     "optimizer_config": OmegaConf.to_container(self.cfg.optimizer, resolve=True),
-                    "tags": ["packing", "full"],
+                    "tags": tags,
                 }
             )
             self.run_name = self.logger_wandb.experiment.name or "debug"
@@ -449,12 +453,61 @@ class TrainingSession:
         self.setup_datasets()
         self.setup_dataloaders()
         self.setup_model()
+
+        initial_weights = OmegaConf.select(self.cfg, "experiment.initial_weights", default=None)
+        match initial_weights:
+            case "use_pretrained":
+                self.replace_weights_with_pretrained()
+            case "use_pretrained_frozen":
+                pretrained_params = self.replace_weights_with_pretrained()
+                self.freeze_params(pretrained_params)
+
         self.setup_logging()
         self.setup_trainer()
 
     def run(self) -> None:
         self.train()
         self.finalize()
+
+    def replace_weights_with_pretrained(self) -> set[str]:
+        pretrained_model = hf.GPT2LMHeadModel.from_pretrained("openai-community/gpt2")
+
+        pretrained_state_dict = pretrained_model.state_dict()
+        target_model_state_dict = self.train_module.model.state_dict()
+
+        # Filter out pretrained weights that are not in the target model
+        # or have a shape mismatch (e.g., embedding layers).
+        weights_to_load = {}
+        for name, param in pretrained_state_dict.items():
+            if name in target_model_state_dict:
+                if param.shape == target_model_state_dict[name].shape:
+                    weights_to_load[name] = param
+                else:
+                    logger.warning(
+                        f"Skipping parameter '{name}' due to shape mismatch: target {target_model_state_dict[name].shape}, source {param.shape}"
+                    )
+            else:
+                logger.warning(f"Skipping parameter '{name}' as it is not found in the target model.")
+
+        # Load the filtered pretrained weights into the target model
+        self.train_module.model.load_state_dict(weights_to_load, strict=False)
+
+        logger.info(f"Successfully loaded {len(weights_to_load)} tensors from the pretrained model.")
+        return set(weights_to_load.keys())
+
+    def freeze_params(self, param_names: Collection[str]) -> None:
+        """Freeze the specified model parameters.
+
+        Args:
+            param_names: Set of parameter names to freeze
+        """
+        frozen_count = 0
+        for name, param in self.train_module.model.named_parameters():
+            if name in param_names:
+                param.requires_grad = False
+                frozen_count += 1
+
+        logger.info(f"Frozen {frozen_count} parameters out of {len(param_names)} specified.")
 
 
 def main(cfg: DictConfig):
