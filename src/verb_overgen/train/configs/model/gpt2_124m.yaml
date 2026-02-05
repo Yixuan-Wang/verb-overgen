@@ -1,0 +1,7 @@
+name: gpt2_124m
+
+n_positions: 1024
+n_ctx: 1024
+n_embd: 768
+n_layer: 12
+n_head: 12
