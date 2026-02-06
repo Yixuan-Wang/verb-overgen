@@ -6,7 +6,7 @@ import polars as pl
 from torch.utils.data import Dataset as TorchDataset
 from loguru import logger
 
-from verb_overgen.train.lib.dataloader import DataBatch, DataOne, collate, get_one_data
+from verb_overgen.train.lib.dataloader import DataBatch, DataOne, collate, get_one_data, strip_last_token
 from verb_overgen.util.misc_util import ensure_dir
 
 
@@ -26,6 +26,9 @@ class DatasetScamp(TorchDataset[DataOneScamp]):
 
     def _load_data(self, input_path: str):
         dataset = pl.read_parquet(input_path).with_row_index("index_sentence")
+        dataset = dataset.with_columns(
+            pl.col("input_ids").pipe(strip_last_token).alias("input_ids"),
+        )
         return dataset
     
     def debug_truncate(self, n_samples: int):

@@ -6,7 +6,7 @@ import polars as pl
 from loguru import logger
 from torch.utils.data import Dataset as TorchDataset
 
-from verb_overgen.train.lib.dataloader import DataBatch, DataOne, collate, get_one_data
+from verb_overgen.train.lib.dataloader import DataBatch, DataOne, collate, get_one_data, strip_last_token
 from verb_overgen.util.misc_util import ensure_dir
 
 
@@ -27,6 +27,9 @@ class DatasetTestset(TorchDataset[DataOneTestset]):
         dataset = pl.read_parquet(input_path)
         assert "input_ids" in dataset.columns
         assert "index_sentence" in dataset.columns
+        dataset = dataset.with_columns(
+            pl.col("input_ids").pipe(strip_last_token).alias("input_ids"),
+        )
         return dataset
 
     def debug_truncate(self, n_samples: int):

@@ -13,12 +13,13 @@ from torch.nn.utils.rnn import pad_sequence
 from jaxtyping import Int
 
 from verb_overgen.common.features import FEATURE_CAUSATIVE
-from verb_overgen.train.lib.dataloader import DataBatch, DataOne, get_one_data
+from verb_overgen.train.lib.dataloader import DataBatch, DataOne, get_one_data, strip_last_token
 
 
 class DataBatchPyChildes(DataBatch, TypedDict):
     index: list[int]
     id_file_utterance: list[str]
+    attention_mask: Int[Tensor, "batch seq"]
 
 
 class DataOnePyChildes(DataOne, TypedDict):
@@ -79,7 +80,9 @@ class DatasetPyChildes(Dataset[DataOnePyChildes]):
             )
 
         # Note: The filter and preprocess function are moved to `train.run_tokenize.load_data`.
-        df = df.with_columns(pl.col("input_ids").cast(pl.List(pl.Int64))).with_row_index("index")
+        df = df.with_columns(
+            pl.col("input_ids").pipe(strip_last_token).cast(pl.List(pl.Int64))
+        ).with_row_index("index")
 
         if df.select(pl.col("input_ids").list.len().max()).item() > self.max_len:
             raise ValueError(f"Maximum sequence length in dataset exceeds max_len={self.max_len}")
@@ -180,7 +183,7 @@ class DatasetPyChildes(Dataset[DataOnePyChildes]):
         #     attention_mask = torch.tril(attention_mask_same_sentence & attention_mask_not_padding).int().unsqueeze(1)
         attention_mask = input_ids.ne(token_id_pad).int()
     
-        position_ids: Int[Tensor, "batch seq"] = torch.arange(input_ids.size(1)).unsqueeze(0).expand(input_ids.size(0), -1)
+        # position_ids: Int[Tensor, "batch seq"] = torch.arange(input_ids.size(1)).unsqueeze(0).expand(input_ids.size(0), -1)
 
         id_file_utterance = [item["id_file_utterance"] for item in batch]
         index = [item["index"] for item in batch]
@@ -188,7 +191,6 @@ class DatasetPyChildes(Dataset[DataOnePyChildes]):
         return {
             "input_ids": input_ids,
             "attention_mask": attention_mask,
-            "position_ids": position_ids,
             "seq_length": seq_length,
             "id_file_utterance": id_file_utterance,
             "index": index,

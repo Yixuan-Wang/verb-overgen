@@ -90,8 +90,7 @@ class VerbOvergenTrainModule(ptl.LightningModule):
         self.log("train/total_tokens", seq_length.float().sum(), reduce_fx="sum")
 
         input_ids: Int[Tensor, "batch max_len"] = batch["input_ids"]
-        # attention_mask: Int[Tensor, "batch max_len max_len"] = batch["attention_mask"]
-        # position_ids: Int[Tensor, "batch max_len"] = batch["position_ids"]
+        attention_mask: Int[Tensor, "batch max_len max_len"] = batch["attention_mask"]
         labels: Int[Tensor, "batch max_len"] = torch.where(
             cast(Tensor, input_ids == self.model.config.pad_token_id),
             -100,
@@ -100,8 +99,7 @@ class VerbOvergenTrainModule(ptl.LightningModule):
 
         this: CausalLMOutput = self.model(
             input_ids=input_ids,
-            # position_ids=position_ids,
-            # attention_mask=attention_mask,
+            attention_mask=attention_mask,
             labels=labels,
         )
         # logits: Float[Tensor, "batch seq vocab"] = this.logits
@@ -135,7 +133,6 @@ class VerbOvergenTrainModule(ptl.LightningModule):
         result: list[Float[Tensor, "ragged_seq"]] = eval_input_token_prob(
             model=self.model,
             input_ids=batch["input_ids"],
-            attention_mask=batch["attention_mask"],
             seq_length=batch["seq_length"],
         )
 
