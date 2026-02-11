@@ -2,7 +2,7 @@
 name: adamw
 
 # Optimizer parameters
-lr: 5.0e-5
+lr: 5.0e-4
 weight_decay: 0.0
 betas:
   - 0.9
@@ -10,6 +10,6 @@ betas:
 
 # Learning rate scheduler
 scheduler:
-  warmup_steps: 2000
-  start_factor: 0.0005  # 1/warmup_steps
+  warmup_steps: 1500
+  start_factor: 0.00067  # 1/warmup_steps
   end_factor: 1.0

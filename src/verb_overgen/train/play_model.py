@@ -18,7 +18,7 @@ tokenizer = hf.PreTrainedTokenizerFast(
     tokenizer_object=hftk.Tokenizer.from_file("./data/tokenizer/1024-wordlevel/tokenizer.json"),
 )
 
-module = VerbOvergenTrainModule.load_from_checkpoint("./var/train/20260128/silver-durian-35/checkpoints/silver-durian-35-epoch=02.ckpt", map_location="cuda")
+module = VerbOvergenTrainModule.load_from_checkpoint("./var/train/20260128/copper-firebrand-62/checkpoints/last.ckpt", map_location="cuda")
 model = module.model
 
 # model = hf.GPT2LMHeadModel(config=hf.GPT2Config(

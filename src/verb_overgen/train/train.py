@@ -35,7 +35,8 @@ if TYPE_CHECKING:
     from wandb.sdk.wandb_run import Run as WandbRun
 
 # Actual max length is 132
-MAX_LEN: int = 160
+# Previous max length is 512
+MAX_LEN: int = 512
 
 
 class VerbOvergenTrainModule(ptl.LightningModule):
