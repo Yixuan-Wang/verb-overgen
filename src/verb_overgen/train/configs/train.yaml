@@ -26,6 +26,10 @@ tokenizer: "./data/tokenizer/1024-wordlevel/tokenizer.json"
 # Output paths
 output:
   root_dir: "./var/train/20260128"
+  
+trace:
+  tokens_to_watch:
+    - "make"
 
 # Data loading
 # TODO: Add filtering to the logic.
@@ -36,9 +40,9 @@ data:
     shuffle: true
     shuffle_seed: null
     max_token_per_batch: 8192
-  val:
-    path: "./data/scamp/scamp-postprocessed-tokenized.20260101.parquet"
-    batch_size: 512
-  test:
+  # val:
+    # path: "./data/scamp/scamp-postprocessed-tokenized.20260101.parquet"
+    # batch_size: 512
+  eval_overgen:
     path: "./data/testset/output/testset_llm_gen.final_postprocessed_20260114T1637.parquet"
     batch_size: 512

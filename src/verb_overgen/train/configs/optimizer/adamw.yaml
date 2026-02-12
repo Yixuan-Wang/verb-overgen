@@ -2,7 +2,7 @@
 name: adamw
 
 # Optimizer parameters
-lr: 5.0e-4
+lr: 5.0e-5
 weight_decay: 0.0
 betas:
   - 0.9

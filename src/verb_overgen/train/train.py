@@ -22,12 +22,12 @@ from typing_extensions import override
 
 # from verb_overgen.common.features import FEATURE_CAUSATIVE
 from verb_overgen.common.tokenize import BOS_TOKEN, PAD_TOKEN
-from verb_overgen.train.lib.dataloader_pychildes import DataBatchPyChildes, DatasetPyChildes
 
 # from verb_overgen.train.lib.dataloader_scamp import DatasetScamp, EvalScampCallback
-from verb_overgen.train.lib.dataloader_testset import DatasetTestset, EvalTestsetCallback
+from verb_overgen.train.lib.dataloader_overgen import DatasetOvergen, EvalOvergenCallback, EvalOvergenMonitor
+from verb_overgen.train.lib.dataloader_pychildes import DataBatchPyChildes, DatasetPyChildes, TrainTokenMonitor
 from verb_overgen.train.lib.utils import CacheCleanCallback
-from verb_overgen.train.lib.validate import eval_input_token_prob
+from verb_overgen.train.lib.validate import eval_input_token_prob, VERB_TARGET_5
 from verb_overgen.util.misc_util import ensure_dir
 
 if TYPE_CHECKING:
@@ -48,10 +48,22 @@ class VerbOvergenTrainModule(ptl.LightningModule):
 
     @override
     def configure_optimizers(self):
+        param_dict = {param_name: param for param_name, param in self.model.named_parameters() if param.requires_grad}
+
+        # https://github.com/karpathy/nanoGPT/blob/3adf61e154c3fe3fca428ad6bc3818b27a3b8291/model.py#L263
+        # Any parameters that is 2D will be weight decayed, otherwise no.
+        # i.e. all weight tensors in matmuls + embeddings decay, all biases and layernorms don't.
+        decay_params = [param for name, param in param_dict.items() if param.dim() >= 2]
+        nodecay_params = [param for name, param in param_dict.items() if param.dim() < 2]
+
+        optim_groups = [
+            {"params": decay_params, "weight_decay": self.optimizer_config.weight_decay},
+            {"params": nodecay_params, "weight_decay": 0.0},
+        ]
+
         optimizer = torch.optim.AdamW(
-            self.model.parameters(),
+            optim_groups,
             lr=self.optimizer_config.lr,
-            weight_decay=self.optimizer_config.weight_decay,
             betas=tuple(self.optimizer_config.betas),
         )
 
@@ -139,7 +151,7 @@ class VerbOvergenTrainModule(ptl.LightningModule):
 
         return pl.DataFrame(
             {
-                "index_sentence": batch["index_sentence"],
+                **{k: v for k, v in batch.items() if not isinstance(v, Tensor)},
                 "token_prob": pl.Series("token_prob", result, pl.List(pl.Float32)),
             }
         )
@@ -154,7 +166,7 @@ class VerbOvergenTrainModule(ptl.LightningModule):
 
 
 @Lazy
-def wandb_logger():
+def wandb_logger() -> WandbLogger:
     # Setup Weights & Biases logger
     wandb_logger = WandbLogger(
         project="25-verb-overgen",
@@ -175,9 +187,11 @@ class TrainingSession:
     token_id_pad: int
 
     dataset_train: DatasetPyChildes
-    dataset_test: DatasetTestset
+    dataset_eval_overgen: DatasetOvergen
+    dataset_eval_overgen_subset: DatasetOvergen
     dataloader_train: torch.utils.data.DataLoader
-    dataloader_test: torch.utils.data.DataLoader
+    dataloader_eval_overgen: torch.utils.data.DataLoader
+    dataloader_eval_overgen_subset: torch.utils.data.DataLoader
 
     model_config: hf.PretrainedConfig
     train_module: VerbOvergenTrainModule
@@ -224,25 +238,25 @@ class TrainingSession:
         train_data_path: str | None = None,
         test_data_path: str | None = None,
     ) -> dict[str, torch.utils.data.Dataset]:
-        """Create training and test datasets.
+        """Create training and eval_overgen datasets.
 
         Args:
             train_data_path (str | None): Optional path to training data. If None, uses self.cfg.data.train.path.
-            test_data_path (str | None): Optional path to test data. If None, uses self.cfg.data.test.path.
+            test_data_path (str | None): Optional path to eval_overgen data. If None, uses self.cfg.data.eval_overgen.path.
 
         Prerequisites:
             - self.token_id_pad: Pad token ID from setup_tokenizer()
             - self.cfg.data.train: Path to training data
-            - self.cfg.data.test: Path to test data
+            - self.cfg.data.eval_overgen: Path to eval_overgen data
 
         Sets:
             - self.dataset_train: DatasetPyChildes instance
-            - self.dataset_test: DatasetTestset instance
+            - self.dataset_eval_overgen: DatasetOvergen instance
         """
-        assert self.token_id_pad is not None, "Tokenizer must be setup first"
+        assert hasattr(self, "token_id_pad"), "Tokenizer must be setup first"
 
         train_data_path = str(self.cfg.data.train.path) if train_data_path is None else train_data_path
-        test_data_path = str(self.cfg.data.test.path) if test_data_path is None else test_data_path
+        test_data_path = str(self.cfg.data.eval_overgen.path) if test_data_path is None else test_data_path
 
         self.dataset_train = DatasetPyChildes(
             input_path=Path(self.cfg.data.train.path),
@@ -250,35 +264,54 @@ class TrainingSession:
             max_len=MAX_LEN,
             max_token_per_batch=self.cfg.data.train.max_token_per_batch,
         )
+        
+        if OmegaConf.select(self.cfg, "data.train.debug", default=False):
+            self.dataset_train.debug_truncate(1000)
 
-        self.dataset_test = DatasetTestset(
-            input_path=self.cfg.data.test.path,
+        self.dataset_eval_overgen = DatasetOvergen.from_path(
+            input_path=self.cfg.data.eval_overgen.path,
             token_id_pad=self.token_id_pad,
+        )
+
+        self.dataset_eval_overgen_subset = self.dataset_eval_overgen.create_subset_verb(
+            VERB_TARGET_5,
         )
 
         return {
             "train": self.dataset_train,
-            "test": self.dataset_test,
+            "eval_overgen": self.dataset_eval_overgen,
+            "eval_overgen_subset": self.dataset_eval_overgen_subset,
         }
 
     def setup_dataloaders(self) -> dict[str, torch.utils.data.DataLoader]:
-        """Create training and test dataloaders.
+        """Create training and eval_overgen dataloaders.
 
         Prerequisites:
             - self.dataset_train: Training dataset from setup_datasets()
-            - self.dataset_test: Test dataset from setup_datasets()
+            - self.dataset_eval_overgen: eval_overgen dataset from setup_datasets()
             - self.cfg.data.train: Training data configuration
-            - self.cfg.data.test: Test data configuration
+            - self.cfg.data.eval_overgen: eval_overgen data configuration
 
         Sets:
             - self.dataloader_train: DataLoader for training
-            - self.dataloader_test: DataLoader for testing
+            - self.dataloader_eval_overgen*: DataLoaders for evaluating overgen
         """
-        assert self.dataset_train is not None and self.dataset_test is not None, "Datasets must be setup first"
+        assert (
+            hasattr(self, "dataset_train")
+            and hasattr(self, "dataset_eval_overgen")
+            and hasattr(self, "dataset_eval_overgen_subset")
+        ), "Datasets must be setup first"
 
         randgen_train_shuffling = torch.Generator()
         if (seed_train_shuffling := OmegaConf.select(self.cfg, "data.train.shuffle_seed", default=None)) is not None:
             randgen_train_shuffling.manual_seed(seed_train_shuffling)
+        else:
+            randgen_train_shuffling.seed()
+            self.logger_wandb.experiment.config.update(
+                {
+                    "train_shuffle_seed": randgen_train_shuffling.initial_seed(),
+                }
+            )
 
         self.dataloader_train = torch.utils.data.DataLoader(
             self.dataset_train,
@@ -286,17 +319,27 @@ class TrainingSession:
             collate_fn=self.dataset_train.collate_fn,
         )
 
-        self.dataloader_test = torch.utils.data.DataLoader(
-            self.dataset_test,
-            batch_size=self.cfg.data.test.batch_size,
+        self.dataloader_eval_overgen = torch.utils.data.DataLoader(
+            self.dataset_eval_overgen,
+            batch_size=self.cfg.data.eval_overgen.batch_size,
             shuffle=False,
-            collate_fn=self.dataset_test.collate_fn,
+            collate_fn=self.dataset_eval_overgen.collate_fn,
         )
 
-        return {
+        self.dataloader_eval_overgen_subset = torch.utils.data.DataLoader(
+            self.dataset_eval_overgen_subset,
+            batch_size=self.cfg.data.eval_overgen.batch_size,
+            shuffle=False,
+            collate_fn=self.dataset_eval_overgen_subset.collate_fn,
+        )
+
+        ret = {
             "train": self.dataloader_train,
-            "test": self.dataloader_test,
+            "eval_overgen": self.dataloader_eval_overgen,
+            "eval_overgen_subset": self.dataloader_eval_overgen_subset,
         }
+
+        return ret
 
     def setup_model(self) -> torch.nn.Module:
         """Create model configuration and training module.
@@ -310,7 +353,7 @@ class TrainingSession:
             - self.model_config: GPT2Config instance
             - self.train_module: VerbOvergenTrainModule instance
         """
-        assert self.tokenizer is not None, "Tokenizer must be setup first"
+        assert hasattr(self, "tokenizer"), "Tokenizer must be setup first"
 
         self.model_config = hf.GPT2Config(
             vocab_size=self.tokenizer.vocab_size,
@@ -386,8 +429,8 @@ class TrainingSession:
         Sets:
             - self.trainer: PyTorch Lightning Trainer instance
         """
-        assert self.logger_wandb is not None and self.run_name is not None, "Logging must be setup first"
-        assert self.dir_checkpoint is not None and self.dir_run_root is not None, "Directories must be setup first"
+        assert hasattr(self, "logger_wandb") and hasattr(self, "run_name"), "Logging must be setup first"
+        assert hasattr(self, "dir_checkpoint") and hasattr(self, "dir_run_root"), "Directories must be setup first"
 
         callback_checkpoint = ModelCheckpoint(
             dirpath=str(self.dir_checkpoint),
@@ -397,18 +440,32 @@ class TrainingSession:
             save_top_k=self.cfg.trainer.checkpoint.save_top_k,
         )
 
+        tokens_to_watch = OmegaConf.select(self.cfg, "trace.tokens_to_watch", default=[])
+        train_token_monitor = TrainTokenMonitor(
+            tokens_to_watch=[*tokens_to_watch, *VERB_TARGET_5],
+            tokenizer=self.tokenizer._tokenizer,
+        )
+        
+        callbacks = [
+            EvalOvergenCallback(),
+            EvalOvergenMonitor(
+                dataloader=self.dataloader_eval_overgen_subset,
+                run_every_n_steps=self.cfg.trainer.log_every_n_steps,
+            ),
+            callback_checkpoint,
+            train_token_monitor,
+            CacheCleanCallback(),
+            LearningRateMonitor(),
+        ]
+
         trainer_kwargs: dict[str, Any] = {
-            "callbacks": [
-                EvalTestsetCallback(),
-                callback_checkpoint,
-                CacheCleanCallback(),
-                LearningRateMonitor(),
-            ],
+            "callbacks": callbacks,
             "accelerator": self.cfg.trainer.accelerator,
             "devices": self.cfg.trainer.devices,
             "max_epochs": self.cfg.trainer.max_epochs,
             "log_every_n_steps": self.cfg.trainer.log_every_n_steps,
             "val_check_interval": self.cfg.trainer.val_check_interval,
+            "gradient_clip_val": self.cfg.trainer.gradient_clip_val,
             "logger": self.logger_wandb,
             "default_root_dir": self.dir_run_root,
         }
@@ -423,15 +480,17 @@ class TrainingSession:
             - self.trainer: From setup_trainer()
             - self.train_module: From setup_model()
             - self.dataloader_train: From setup_dataloaders()
-            - self.dataloader_test: From setup_dataloaders()
+            - self.dataloader_eval_overgen: From setup_dataloaders()
         """
-        assert self.trainer is not None and self.train_module is not None, "Trainer and module must be setup first"
-        assert self.dataloader_train is not None and self.dataloader_test is not None, "Dataloaders must be setup first"
+        assert hasattr(self, "trainer") and hasattr(self, "train_module"), "Trainer and module must be setup first"
+        assert hasattr(self, "dataloader_train") and hasattr(self, "dataloader_eval_overgen"), (
+            "Dataloaders must be setup first"
+        )
 
         self.trainer.fit(
             self.train_module,
             train_dataloaders=self.dataloader_train,
-            val_dataloaders=self.dataloader_test,
+            val_dataloaders=self.dataloader_eval_overgen,
         )
 
     def finalize(self) -> None:
@@ -440,13 +499,14 @@ class TrainingSession:
         Prerequisites:
             - self.logger_wandb: From setup_logging()
         """
-        assert self.logger_wandb is not None, "Logger must be setup first"
+        assert hasattr(self, "logger_wandb"), "Logger must be setup first"
 
         self.logger_wandb.experiment.finish()
         self.logger_wandb.finalize("success")
 
     def setup(self) -> None:
         """Run all setup steps in order."""
+        self.setup_logging()
         self.setup_tokenizer()
         self.setup_datasets()
         self.setup_dataloaders()
@@ -460,7 +520,6 @@ class TrainingSession:
                 pretrained_params = self.replace_weights_with_pretrained()
                 self.freeze_params(pretrained_params)
 
-        self.setup_logging()
         self.setup_trainer()
 
     def run(self) -> None:

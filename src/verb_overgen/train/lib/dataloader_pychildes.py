@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from collections import Counter
 from collections.abc import Generator, Sequence
 from pathlib import Path
 from typing import TypedDict, cast
@@ -8,8 +9,10 @@ import polars as pl
 import torch
 from torch import Tensor
 from loguru import logger
+import tokenizers as hftk
 from torch.utils.data import Dataset, Sampler
 from torch.nn.utils.rnn import pad_sequence
+import lightning.pytorch as ptl
 from jaxtyping import Int
 
 from verb_overgen.common.features import FEATURE_CAUSATIVE
@@ -268,6 +271,38 @@ class SamplerBin(Sampler[list[int]]):
 
     def __len__(self):
         return len(self.bin_length)
+
+class TrainTokenMonitor(ptl.Callback):
+    map_token_string: dict[int, str]
+    counter_token: Counter[int]
+    def __init__(self,
+        *,
+        tokens_to_watch: Sequence[str],
+        tokenizer: hftk.Tokenizer,
+    ):
+        self.map_token_string = {}
+        self.counter_token = Counter()
+        for token in tokens_to_watch: 
+            token_id: int | None = tokenizer.token_to_id(token)
+            if token_id is None:
+                logger.warning(f"Token '{token}' not found in tokenizer vocabulary and cannot be monitored.")
+            self.map_token_string[token_id] = token
+        
+    def on_train_batch_start(
+        self,
+        trainer: ptl.Trainer,
+        pl_module: ptl.LightningModule,
+        batch: DataBatchPyChildes,
+        batch_idx: int,
+    ) -> None:
+        input_ids = batch["input_ids"]
+        dict_log = {}
+        for token_id, token_str in self.map_token_string.items():
+            count_token = (input_ids == token_id).sum().item()
+            self.counter_token[token_id] += count_token
+            dict_log[f"train/token_count/{token_str}"] = self.counter_token[token_id]
+
+        pl_module.log_dict(dict_log,)
 
 
 if __name__ == "__main__":

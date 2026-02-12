@@ -15,6 +15,26 @@ from torch.nn.utils.rnn import unpad_sequence
 import lightning as ptl
 from verb_overgen.util.misc_util import ensure_dir
 
+VERB_TARGET_5 = ["laugh", "cry", "sing", "smile", "sleep"]
+VERB_TARGET_17 = [
+    "appear",
+    "chortle",
+    "chuckle",
+    "cry",
+    "descend",
+    "frown",
+    "giggle",
+    "glow",
+    "grin",
+    "groan",
+    "laugh",
+    "rise",
+    "sing",
+    "sleep",
+    "smile",
+    "sneeze",
+    "vanish",
+]
 
 class EvalCallback(ptl.Callback):
     def __init__(self):
@@ -87,3 +107,16 @@ def perplexity(token_probs: pl.Expr) -> pl.Expr:
     mean_nll = nlls.list.mean()
     ppl = mean_nll.exp()
     return ppl
+    
+def nll(token_probs: pl.Expr) -> pl.Expr:
+    """Compute sentence-level negative log-likelihood (NLL) from token probabilities.
+    
+    Args:
+        token_probs (pl.Expr): A Polars `list(float)` expression representing a list of token probabilities.
+    
+    Returns:
+        A Polars `float` expression representing the NLL.
+    """
+    nlls = token_probs.list.eval(pl.element().log().neg())
+    mean_nll = nlls.list.mean()
+    return mean_nll

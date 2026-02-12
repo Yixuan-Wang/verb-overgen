@@ -12,7 +12,7 @@ import torch
 import transformers as hf
 
 from verb_overgen.common.tokenize import PAD_TOKEN
-from verb_overgen.train.lib.dataloader_testset import DatasetTestset, TestTestsetOnceCallback
+from verb_overgen.train.lib.dataloader_overgen import DatasetOvergen, TestOvergenOnceCallback
 from verb_overgen.train.train import VerbOvergenTrainModule
 from verb_overgen.util.misc_util import ensure_dir
 
@@ -31,7 +31,7 @@ if __name__ == "__main__":
     train_module = VerbOvergenTrainModule.load_from_checkpoint(CHECKPOINT)
 
     # Create test dataset and dataloader
-    dataset_test = DatasetTestset(
+    dataset_test = DatasetOvergen.from_path(
         input_path=PATH_TEST,
         token_id_pad=token_id_pad,
     )
@@ -45,7 +45,7 @@ if __name__ == "__main__":
     output_dir = ensure_dir(checkpoint_path.parent.parent)
 
     # Create trainer and run test
-    test_callback = TestTestsetOnceCallback()
+    test_callback = TestOvergenOnceCallback()
     trainer = ptl.Trainer(
         callbacks=[test_callback],
         accelerator="gpu",
@@ -62,7 +62,7 @@ if __name__ == "__main__":
     )
     
     dataset_test = test_callback.test_dataset.with_columns(pl.lit(step).alias("step"))
-    output_path = ensure_dir(output_dir / "test") / f"testset_step_{step:08d}.parquet"
+    output_path = ensure_dir(output_dir / "test") / f"overgen_step_{step:08d}.parquet"
     
     if output_path.exists():
         pdb.set_trace(header=f"The {output_path=} exists.")
