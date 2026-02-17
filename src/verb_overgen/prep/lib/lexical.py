@@ -237,6 +237,7 @@ BIDGOOD_VERBS: Final = {
     },
 }
 
+LIST_CAUSATIVE_VERBS = [*BIDGOOD_VERBS["intransitive_only"], "sneeze", "cough"]
 
 class BaseSpacyParser:
     def __init__(self):

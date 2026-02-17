@@ -25,7 +25,7 @@ tokenizer: "./data/tokenizer/1024-wordlevel/tokenizer.json"
 
 # Output paths
 output:
-  root_dir: "./var/train/20260128"
+  root_dir: "./var/train/20260212"
   
 trace:
   tokens_to_watch:
@@ -35,7 +35,7 @@ trace:
 # TODO: Add filtering to the logic.
 data:
   train:
-    path: "./data/pychildes/pychildes-morphosyntax_postprocess.20260102_20251024.parquet"
+    path: "./data/pychildes/pychildes-morphosyntax_postprocess.20260212_20251024.parquet"
     # batch_size: 256
     shuffle: true
     shuffle_seed: null
