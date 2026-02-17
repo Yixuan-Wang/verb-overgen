@@ -9,7 +9,7 @@ import polars as pl
 import tokenizers as hftk
 import torch
 import transformers as hf
-from apfel import Lazy
+from apfel import Lazy, todo
 from hydra import compose, initialize_config_dir
 from jaxtyping import Float, Int
 from lightning.pytorch.callbacks import LearningRateMonitor, ModelCheckpoint
@@ -25,7 +25,7 @@ from verb_overgen.common.tokenize import BOS_TOKEN, PAD_TOKEN
 
 # from verb_overgen.train.lib.dataloader_scamp import DatasetScamp, EvalScampCallback
 from verb_overgen.train.lib.dataloader_overgen import DatasetOvergen, EvalOvergenCallback, EvalOvergenMonitor
-from verb_overgen.train.lib.dataloader_pychildes import DataBatchPyChildes, DatasetPyChildes, TrainTokenMonitor
+from verb_overgen.train.lib.dataloader_pychildes import DataBatchPyChildes, DatasetPyChildes, TrainTokenMonitor, remove_entrenchment, remove_preemption
 from verb_overgen.train.lib.utils import CacheCleanCallback
 from verb_overgen.train.lib.validate import eval_input_token_prob, VERB_TARGET_5
 from verb_overgen.util.misc_util import ensure_dir
@@ -258,7 +258,7 @@ class TrainingSession:
         train_data_path = str(self.cfg.data.train.path) if train_data_path is None else train_data_path
         test_data_path = str(self.cfg.data.eval_overgen.path) if test_data_path is None else test_data_path
 
-        self.dataset_train = DatasetPyChildes(
+        self.dataset_train = DatasetPyChildes.from_path(
             input_path=Path(self.cfg.data.train.path),
             token_id_pad=self.token_id_pad,
             max_len=MAX_LEN,
@@ -267,6 +267,20 @@ class TrainingSession:
         
         if OmegaConf.select(self.cfg, "data.train.debug", default=False):
             self.dataset_train.debug_truncate(1000)
+            
+        match self.cfg.data.train.subset:
+            case "full":
+                pass
+            case "remove_preemption":
+                remove_preemption(self.dataset_train)
+            case "remove_entrenchment":
+                randgen = torch.Generator()
+                if (subset_seed := OmegaConf.select(self.cfg, "data.train.subset_seed", default=None)) is not None:
+                    randgen.manual_seed(subset_seed)
+
+                remove_entrenchment(self.dataset_train, randgen=randgen)
+            case "none":
+                logger.warning("No filtering logic applied to training dataset")
 
         self.dataset_eval_overgen = DatasetOvergen.from_path(
             input_path=self.cfg.data.eval_overgen.path,
@@ -305,8 +319,7 @@ class TrainingSession:
         randgen_train_shuffling = torch.Generator()
         if (seed_train_shuffling := OmegaConf.select(self.cfg, "data.train.shuffle_seed", default=None)) is not None:
             randgen_train_shuffling.manual_seed(seed_train_shuffling)
-        else:
-            randgen_train_shuffling.seed()
+        else: 
             self.logger_wandb.experiment.config.update(
                 {
                     "train_shuffle_seed": randgen_train_shuffling.initial_seed(),
@@ -316,7 +329,11 @@ class TrainingSession:
         self.dataloader_train = torch.utils.data.DataLoader(
             self.dataset_train,
             batch_sampler=self.dataset_train.create_sampler(shuffle=randgen_train_shuffling),
-            collate_fn=self.dataset_train.collate_fn,
+            collate_fn=(
+                self.dataset_train.collate_fn_without_filter
+                if self.cfg.data.train.subset == "full"
+                else self.dataset_train.collate_fn_with_filter
+            ),
         )
 
         self.dataloader_eval_overgen = torch.utils.data.DataLoader(

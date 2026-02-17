@@ -32,7 +32,6 @@ trace:
     - "make"
 
 # Data loading
-# TODO: Add filtering to the logic.
 data:
   train:
     path: "./data/pychildes/pychildes-morphosyntax_postprocess.20260212_20251024.parquet"
@@ -40,6 +39,9 @@ data:
     shuffle: true
     shuffle_seed: null
     max_token_per_batch: 8192
+    
+    subset: full
+    subset_seed: null
   # val:
     # path: "./data/scamp/scamp-postprocessed-tokenized.20260101.parquet"
     # batch_size: 512
