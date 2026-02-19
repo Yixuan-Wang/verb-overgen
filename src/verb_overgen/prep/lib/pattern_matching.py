@@ -6,6 +6,7 @@ The datatype definition can be found in `prep.lib.syntactic.DtParse`.
 
 from collections.abc import Iterable
 from functools import partial
+from typing import TypedDict
 
 import polars as pl
 
@@ -160,18 +161,51 @@ def extract_periphrastic_causative(
     arc = parse.struct.field("arc")
     rel = parse.struct.field("rel")
 
+    # First get the indices of the support verb
     indices_make = word.list.eval(pl.element().eq(support_verb).arg_true())
-    indices_children = pl.concat_list(pl.struct(arc, indices_make)).list.eval(
+
+    # Then get the children of the support verb
+    indices_make_children = pl.concat_list(pl.struct(arc, indices_make)).list.eval(
         (lambda e1, e2: e1.eq(e2 + 1).arg_true())(pl.element().struct[0].explode(), pl.element().struct[1].list.first())
     )
-    indices_children_comp = rel.list.gather(indices_children).list.eval(pl.element().eq("COMP").arg_true())
-    indices_comp_children = indices_children.list.gather(indices_children_comp)
+
+    # Then filter the children with a `COMP` relation
+    _ = rel.list.gather(indices_make_children).list.eval(pl.element().eq("COMP").arg_true())
+    indices_make_children_comp = indices_make_children.list.gather(_)
+
     if pos is not None:
         idx_is_verb = pos.list.eval(pl.element().is_in(list(target_pos)).arg_true())
-        indices_comp_children = indices_comp_children.list.set_intersection(idx_is_verb)
-    word_comp_children = word.list.gather(indices_comp_children)
+        indices_make_children_comp = indices_make_children_comp.list.set_intersection(idx_is_verb)
 
+    word_comp_children = word.list.gather(indices_make_children_comp)
     return word_comp_children
 
 
-extract_periphrastic_make = partial(extract_periphrastic_causative, support_verb="make")
+class Parse(TypedDict):
+    word: list[str]
+    arc: list[int]
+    rel: list[str]
+
+
+def _extract_periphrastic_verb(
+    parse: Parse,
+    *,
+    support_verb: str,
+) -> list[str]:
+    word, arc, rel = parse["word"], parse["arc"], parse["rel"]
+
+    # A map from lemma indices to their children's lemma indices
+    make_children = {
+        i1: [j for j, a1 in enumerate(arc) if a1 == i1] for i1, w in enumerate(word, 1) if w == support_verb
+    }
+
+    indices_make_children_comp = [[i for i in l if rel[i] == "COMP"] for l in make_children.values()]
+
+    word_make_children_comp = [word[i] for l in indices_make_children_comp for i in l]
+    return word_make_children_comp
+
+
+def extract_periphrastic_make(
+    parse: pl.Expr,
+) -> pl.Expr:
+    return parse.map_elements(partial(_extract_periphrastic_verb, support_verb="make"), pl.List(pl.String))
