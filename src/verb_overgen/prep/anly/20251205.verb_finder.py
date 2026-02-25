@@ -4,7 +4,7 @@
 
 import marimo
 
-__generated_with = "0.19.2"
+__generated_with = "0.19.11"
 app = marimo.App(
     width="medium",
     css_file="/home/tomyxw/Projects/2025/verb-overgen/verb-overgen/notebook.css",
@@ -18,19 +18,22 @@ def _():
     import altair as alt
     import matplotlib.pyplot as plt
     import seaborn as sns
+
     return alt, mo, pl, plt
 
 
 @app.cell
 def _(plt):
-    plt.rcParams["font.family"] = "Iosevka"
+    plt.rcParams["font.family"] = "Liberation Mono"
+
+    __import__("os").chdir(__import__("os").environ["PWD"])
     return
 
 
 @app.cell
 def _(pl):
     # dataset = pl.read_parquet("/u501/y4466wan/projects/2025/verb-overgen/data/childes-gold/test-251010T0422/merged.test.parquet/pychildes-morphosyntax.20251024.parquet")
-    dataset = pl.read_parquet("/home/tomyxw/Projects/2025/verb-overgen/data/pychildes-morphosyntax.20251024.parquet")
+    dataset = pl.read_parquet("./data/pychildes/pychildes-morphosyntax_postprocess.20260212_20251024.parquet")
 
     dataset = dataset.with_columns(
         pl.struct(
@@ -199,7 +202,8 @@ def _(dataset, lemma_search, pl):
         pl.col("morph").struct.field("lemma").list.contains(lemma_search.value)
     )
 
-    expr_content_raw = pl.col("content").alias("content_raw")
+    # expr_content_raw = pl.col("content").alias("content_raw")
+    expr_content_raw = pl.col("content_raw")
     expr_content_lemma = (
             pl.col("morph").struct.field("lemma")
                 .list.join(" ")
@@ -225,6 +229,7 @@ def _(dataset, lemma_search, pl):
 def _():
     from verb_overgen.prep.lib.graph import create_parse_graph, draw_parse_graph
     from verb_overgen.prep.lib.pattern_matching import get_substructure, get_target_word
+
     return (
         create_parse_graph,
         draw_parse_graph,
@@ -260,10 +265,10 @@ def _(
 
 
 @app.cell
-def _(df_this_lemma_with_parse, lemma_search, pl):
+def _(df_this_lemma_with_parse, pl):
     df_this_lemma_with_parse.filter(
-        pl.col("content_lemma").str.contains(fr"{lemma_search.value}.*\bto\b"),
-        pl.col("children_rel").list.contains("OBJ"),
+        pl.col("content_lemma").str.contains("get"),
+        # pl.col("children_rel").list.contains("OBJ"),
     )
     return
 
