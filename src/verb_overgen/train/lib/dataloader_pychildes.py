@@ -64,21 +64,37 @@ class DatasetPyChildes(Dataset[DataOnePyChildes]):
     def from_path(
         cls,
         *,
-        input_path: Path,
+        input_path_main: Path,
+        input_path_annotation: Path,
         token_id_pad: int,
         max_len: int,
         max_token_per_batch: int,
     ) -> DatasetPyChildes:
         return cls(
-            cls._load_data(input_path, max_len=max_len),
+            cls._load_data(input_path_main=input_path_main, input_path_annotation=input_path_annotation, max_len=max_len),
             token_id_pad=token_id_pad,
             max_len=max_len,
             max_token_per_batch=max_token_per_batch,
         )
 
     @classmethod
-    def _load_data(cls, input_path: Path, *, max_len: int):
-        df = pl.read_parquet(input_path)
+    def _load_data(cls, input_path_main: Path, input_path_annotation: Path, *, max_len: int):
+        df_main = pl.read_parquet(input_path_main)
+        df_annotation = pl.read_parquet(input_path_annotation)
+        
+        num_rows = len(df_main)
+
+        logger.info("Joining main dataset and annotation dataset.")
+        # df = df_main.join(df_annotation, on=["id_file", "id_utterance"], validate="1:1", coalesce=True)
+        assert num_rows == len(df_annotation), "The main dataset and annotation dataset must have the same number of rows."
+        assert df_main[0, "id_file"] == df_annotation[0, "id_file"] and df_main[0, "id_utterance"] == df_annotation[0, "id_utterance"], "The main dataset and annotation dataset must be aligned in the same order."
+        assert df_main[num_rows - 1, "id_file"] == df_annotation[num_rows - 1, "id_file"] and df_main[num_rows - 1, "id_utterance"] == df_annotation[num_rows - 1, "id_utterance"], "The main dataset and annotation dataset must be aligned in the same order."
+        df = df_main.with_columns(
+            df_annotation["features"],
+            df_annotation["featured_verbs"],
+        )
+
+        logger.info("Processing dataset for training.")
         if df.schema.get("input_ids") != pl.List(pl.Int32):
             raise KeyError(
                 "Pre-tokenize dataset first using `train.run_tokenize`. The `input_ids` column should be of type `List(Int32)`."
@@ -337,35 +353,39 @@ def remove_entrenchment(dataset: DatasetPyChildes, *, randgen: torch.Generator |
         dataset.dataframe.filter(pl.col("features").list.contains(FEATURE_CAUSATIVE))
         .select("featured_verbs")
         .explode("featured_verbs")
-        .filter(pl.col("featured_verbs").str.starts_with("causative"))
-        .group_by("featured_verbs")
-        .agg(pl.len())
+        .filter(pl.col("featured_verbs").struct["feature"] == FEATURE_CAUSATIVE)
+        .select(
+            pl.col("featured_verbs").struct["verb"].value_counts().struct.unnest()
+        )
     )
     
-    for verb, count in zip(df_causative_count["featured_verbs"], df_causative_count["len"]):
+    for verb, count in zip(df_causative_count["verb"], df_causative_count["count"]):
         seed = torch.randint(0, 1_000_000, (1,)).item() if randgen else None
         df_sample = dataset.dataframe.filter(
-            pl.col("featured_verbs").list.contains(verb),
-            pl.col("features").list.contains(FEATURE_CAUSATIVE_ENTRENCHED),
+            pl.col("featured_verbs").list.eval(
+                pl.element().struct["feature"].eq(FEATURE_CAUSATIVE_ENTRENCHED) & pl.element().struct["verb"].eq(verb)
+            ).list.any(),
         ).sample(count, seed=seed)
         dataset.index_should_remove.update(df_sample["index"])
 
 
 if __name__ == "__main__":
-    from itertools import islice
 
     from torch.utils.data import DataLoader
 
-    PATH_TRAIN = "./data/pychildes/pychildes-morphosyntax_postprocess.20260212_20251024.parquet"
+    PATH_MAIN = "./data/pychildes/pychildes-morphosyntax-tokenized.20251024.parquet"
+    PATH_ANNOTATION = "./data/pychildes/pychildes-morphosyntax_annotation-20260221.20251024.parquet"
 
     dataset = DatasetPyChildes.from_path(
-        input_path=Path(PATH_TRAIN),
+        input_path_main=Path(PATH_MAIN),
+        input_path_annotation=Path(PATH_ANNOTATION),
         token_id_pad=0,
         max_token_per_batch=8192,
         max_len=512,
     )
-    
-    remove_entrenchment_sub_preemption(dataset, randgen=torch.Generator().manual_seed(42))
+
+    with __import__("ipdb").launch_ipdb_on_exception():
+        remove_entrenchment(dataset, randgen=torch.Generator().manual_seed(42))
 
     randgen_train_shuffling = torch.Generator()
     randgen_train_shuffling.manual_seed(23)
@@ -383,6 +403,8 @@ if __name__ == "__main__":
         # input_ids = batch["input_ids"]
         # count_effective_token = ((input_ids != 0) & (input_ids != 1)).sum().item()
         # list_count_effective_token.append(count_effective_token)
+        if batch.get("count_removed", 0) > 0:
+            __import__("IPython").embed(using=False)
         
         count_removed += batch.get("count_removed", 0)
         # seq_length = batch["seq_length"]

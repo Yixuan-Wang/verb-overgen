@@ -259,7 +259,8 @@ class TrainingSession:
         test_data_path = str(self.cfg.data.eval_overgen.path) if test_data_path is None else test_data_path
 
         self.dataset_train = DatasetPyChildes.from_path(
-            input_path=Path(self.cfg.data.train.path),
+            input_path_main=Path(self.cfg.data.train.path),
+            input_path_annotation=Path(self.cfg.data.train.path_annotation),
             token_id_pad=self.token_id_pad,
             max_len=MAX_LEN,
             max_token_per_batch=self.cfg.data.train.max_token_per_batch,
