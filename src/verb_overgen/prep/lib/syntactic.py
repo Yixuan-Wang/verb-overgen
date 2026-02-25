@@ -12,6 +12,12 @@ class Parse(TypedDict):
     arc: list[int]
     word: list[str]
 
+class ParseWithPos(Parse):
+    """
+    Dependency parse with additional POS tags
+    """
+    pos: list[str]
+
 DtParse: pl.DataType = pl.Struct(
     {
         "rel": pl.List(pl.String),

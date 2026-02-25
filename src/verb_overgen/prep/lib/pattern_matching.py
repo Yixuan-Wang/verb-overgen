@@ -10,6 +10,8 @@ from typing import TypedDict
 
 import polars as pl
 
+from verb_overgen.prep.lib.syntactic import Parse
+
 
 def match_svo(parse_expr: pl.Expr):
     """
@@ -181,31 +183,53 @@ def extract_periphrastic_causative(
     return word_comp_children
 
 
-class Parse(TypedDict):
-    word: list[str]
-    arc: list[int]
-    rel: list[str]
-
-
-def _extract_periphrastic_verb(
+def extract_periphrastic_verb(
     parse: Parse,
     *,
     support_verb: str,
+    verify_subj: bool = False,
 ) -> list[str]:
+    """Extract verbs that are in a periphrastic construction with the given support verb, e.g. "make".
+
+    Args:
+        parse (Parse): The parsed data.
+        support_verb (str): The support verb to look for, e.g. "make".
+        verify_subj (bool): Whether to verify that the target verb has a `SUBJ` child. Defaults to `False`.
+
+    Returns:
+        list[str]: The list of extracted verbs.
+    """
     word, arc, rel = parse["word"], parse["arc"], parse["rel"]
 
-    # A map from lemma indices to their children's lemma indices
-    make_children = {
+    if support_verb not in word:
+        return []
+
+    if "COMP" not in rel:
+        return []
+
+    # A map from support verb's lemma indices to their children's lemma indices
+    support_verb_children = {
         i1: [j for j, a1 in enumerate(arc) if a1 == i1] for i1, w in enumerate(word, 1) if w == support_verb
     }
 
-    indices_make_children_comp = [[i for i in l if rel[i] == "COMP"] for l in make_children.values()]
+    # Array indices of the `COMP` children of the support verb
+    indices_target = [[i for i in l if rel[i] == "COMP"] for l in support_verb_children.values()]
 
-    word_make_children_comp = [word[i] for l in indices_make_children_comp for i in l]
-    return word_make_children_comp
+    if verify_subj:
+        # Array indices of nodes that have a `SUBJ` children.
+        indices_has_subj = {to1 - 1 for r, to1 in zip(rel, arc) if r == "SUBJ"}
 
+        # Filter the `COMP` children of the support verb to those that have a `SUBJ` child
+        indices_target = [
+            list(set(l).intersection(indices_has_subj)) for l in indices_target
+        ]
+
+    word_target = [word[i] for l in indices_target for i in l]
+    return word_target
 
 def extract_periphrastic_make(
-    parse: pl.Expr,
+    parse: pl.Expr
 ) -> pl.Expr:
     return parse.map_elements(partial(_extract_periphrastic_verb, support_verb="make"), pl.List(pl.String))
+
+# extract_periphrastic_make = partial(extract_periphrastic_verb, support_verb="make")
