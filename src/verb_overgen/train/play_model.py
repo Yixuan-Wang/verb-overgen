@@ -9,7 +9,7 @@ import transformers as hf
 import tokenizers as hftk
 
 from verb_overgen.train.train import VerbOvergenTrainModule
-from verb_overgen.common.tokenize import BOS_TOKEN, EOS_TOKEN
+from verb_overgen.common.tokenize import BOS_TOKEN
 
 torch.set_default_device("cuda")
 
@@ -18,7 +18,7 @@ tokenizer = hf.PreTrainedTokenizerFast(
     tokenizer_object=hftk.Tokenizer.from_file("./data/tokenizer/1024-wordlevel/tokenizer.json"),
 )
 
-module = VerbOvergenTrainModule.load_from_checkpoint("./var/train/20260128/copper-firebrand-62/checkpoints/last.ckpt", map_location="cuda")
+module = VerbOvergenTrainModule.load_from_checkpoint("./var/train/20260212/avid-energy-79/checkpoints/last.ckpt", map_location="cuda")
 model = module.model
 
 # model = hf.GPT2LMHeadModel(config=hf.GPT2Config(
@@ -73,7 +73,7 @@ def loop():
 
 def compare():
     bos_token_id = tokenizer._tokenizer.token_to_id(BOS_TOKEN)
-    eos_token_id = tokenizer._tokenizer.token_to_id(EOS_TOKEN)
+    # eos_token_id = tokenizer._tokenizer.token_to_id(EOS_TOKEN)
 
     while True:
         prompt_1 = Prompt.ask("The first prompt")
@@ -89,8 +89,8 @@ def compare():
         print(f"Prompt 2: {prompt_2}")
         input_1 = tokenizer._tokenizer.encode(prompt_1)
         input_2 = tokenizer._tokenizer.encode(prompt_2)
-        input_ids_1: Float[torch.Tensor, "1 seq_1"] = torch.tensor([[bos_token_id, *input_1.ids, eos_token_id]])
-        input_ids_2: Float[torch.Tensor, "1 seq_2"] = torch.tensor([[bos_token_id, *input_2.ids, eos_token_id]])
+        input_ids_1: Float[torch.Tensor, "1 seq_1"] = torch.tensor([[bos_token_id, *input_1.ids]])
+        input_ids_2: Float[torch.Tensor, "1 seq_2"] = torch.tensor([[bos_token_id, *input_2.ids]])
         print(f"Input tokens 1: {input_1.tokens}")
         print(f"Input tokens 2: {input_2.tokens}")
 
@@ -114,24 +114,30 @@ def compare():
             index=eo.rearrange(input_ids_2[:, 1:], "1 seq -> 1 seq 1"),
         )
 
-        seq_prob_1 = token_prob_1.prod()
-        seq_prob_2 = token_prob_2.prod()
+        seq_nll_1 = token_prob_1.log().mean().neg()
+        seq_nll_2 = token_prob_2.log().mean().neg()
 
-        print(f"Sequence probability 1: {seq_prob_1.item():.6e}")
-        print(f"Sequence probability 2: {seq_prob_2.item():.6e}")
+        print(f"Sequence probability 1: {seq_nll_1.item():.6e}")
+        print(f"Sequence probability 2: {seq_nll_2.item():.6e}")
+        
+        seq_nll_1_no_subj = token_prob_1[:, 1:].log().mean().neg()
+        seq_nll_2_no_subj = token_prob_2[:, 1:].log().mean().neg()
+        
+        print(f"Sequence probability 1 without subject: {seq_nll_1_no_subj.item():.6e}")
+        print(f"Sequence probability 2 without subject: {seq_nll_2_no_subj.item():.6e}")
 
         print(f"Token-level probabilities 1: {[f'{p.item():.6e}' for p in token_prob_1[0, :, 0]]}")
         print(f"Token-level probabilities 2: {[f'{p.item():.6e}' for p in token_prob_2[0, :, 0]]}")
 
 def prefix_inspection():
     bos_token_id = tokenizer._tokenizer.token_to_id(BOS_TOKEN)
-    eos_token_id = tokenizer._tokenizer.token_to_id(EOS_TOKEN)
+    # eos_token_id = tokenizer._tokenizer.token_to_id(EOS_TOKEN)
 
     jane: int = tokenizer._tokenizer.token_to_id("jane")
 
     first_token_probs = torch.zeros((32 + 1, 32 + 1))
     for length in range(1, 32 + 1):
-        input = [bos_token_id, *(jane for _ in range(length)), eos_token_id]
+        input = [bos_token_id, *(jane for _ in range(length))]
         input_ids: Float[torch.Tensor, "1 seq"] = torch.tensor([input])
         output = model(input_ids=input_ids)
         logits: Float[torch.Tensor, "1 seq vocab"] = output.logits

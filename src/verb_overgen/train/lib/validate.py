@@ -5,6 +5,7 @@ Validation of model.
 from pathlib import Path
 from typing import Any
 
+import numpy as np
 import einops as eo
 import polars as pl
 import torch
@@ -120,3 +121,24 @@ def nll(token_probs: pl.Expr) -> pl.Expr:
     nlls = token_probs.list.eval(pl.element().log().neg())
     mean_nll = nlls.list.mean()
     return mean_nll
+
+def ci(arr: np.ndarray, n_resamples: int = 10_000, batch_size: int = 200) -> tuple[float, float]:
+    """Return the 95% bootstrap CI (lower, upper) for the mean, using batched numpy."""
+    arr = np.ravel(arr) # Handles multi-dimensional inputs safely
+    n = arr.size
+    
+    if n == 0:
+        raise ValueError("Cannot compute bootstrap CI on an empty array.")
+        
+    rng = np.random.default_rng()
+    means = np.empty(n_resamples, dtype=np.float64)
+    
+    for i in range(0, n_resamples, batch_size):
+        current_batch_size = min(batch_size, n_resamples - i)
+        
+        # Allocate only a small batch at a time
+        batch_resamples = rng.choice(arr, size=(current_batch_size, n), replace=True)
+        means[i:i + current_batch_size] = batch_resamples.mean(axis=1)
+        
+    lower, upper = np.percentile(means, [2.5, 97.5])
+    return float(lower), float(upper)

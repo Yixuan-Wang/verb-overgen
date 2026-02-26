@@ -13,7 +13,7 @@ from torch.utils.data import DataLoader as TorchDataLoader
 from torch.utils.data import Dataset as TorchDataset
 
 from verb_overgen.train.lib.dataloader import DataBatch, DataOne, collate, get_one_data, strip_last_token
-from verb_overgen.train.lib.validate import nll, VERB_TARGET_5
+from verb_overgen.train.lib.validate import ci, nll, VERB_TARGET_5
 from verb_overgen.util.misc_util import ensure_dir
 
 
@@ -129,20 +129,22 @@ class EvalOvergenMonitor(ptl.Callback):
             .group_by("verb", "kind")
             .agg(
                 pl.col("nll").mean().alias("nll_mean"),
-                pl.col("nll").std().alias("nll_std"),
+                pl.col("nll").alias("nll"),
             )
             .sort("verb", "kind")
         )
 
         dict_results = {}
-        for verb, kind, nll_mean, nll_std in zip(
+        for verb, kind, nll_mean, in zip(
             df_results["verb"],
             df_results["kind"],
             df_results["nll_mean"],
-            df_results["nll_std"],
+            # df_results["nll"],
         ):
+            # ci_lower, ci_upper = ci(nll_series.to_numpy())
             dict_results[f"eval/loss_mean/{verb}_{kind}"] = nll_mean
-            dict_results[f"eval/loss_std/{verb}_{kind}"] = nll_std
+            # dict_results[f"eval/loss_ci_lower/{verb}_{kind}"] = ci_lower
+            # dict_results[f"eval/loss_ci_upper/{verb}_{kind}"] = ci_upper
 
         pl_module.log_dict(dict_results)
 
