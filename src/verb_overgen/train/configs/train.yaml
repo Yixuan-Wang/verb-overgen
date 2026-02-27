@@ -35,7 +35,7 @@ trace:
 data:
   train:
     path: "./data/pychildes/pychildes-morphosyntax-tokenized.20251024.parquet"
-    path_annotation: "./data/pychildes/pychildes-morphosyntax_annotation-20260221.20251024.parquet"
+    path_annotation: "./data/pychildes/pychildes-morphosyntax_annotation-20260225.20251024.parquet"
     # batch_size: 256
     shuffle: true
     shuffle_seed: null

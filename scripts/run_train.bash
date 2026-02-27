@@ -1,7 +1,7 @@
 #!/bin/bash
 
 #SBATCH --account=aip-fredashi
-#SBATCH --job-name=packing-debug
+#SBATCH --job-name=extended-target-verb-minimal
 #SBATCH --cpus-per-task=8
 #SBATCH --gres=gpu:l40s:1
 #SBATCH --mem=64G
@@ -31,7 +31,7 @@ CONFIG="${CONFIGS[$SLURM_ARRAY_TASK_ID]}"
 
 python -m verb_overgen.train.train \
        trainer.max_epochs=3 \
-       seed=136 data.train.shuffle_seed=117 data.train.subset_seed=819 \
-       ${CONFIG} 
+       seed=507 data.train.shuffle_seed=181 data.train.subset_seed=125 \
+       ${CONFIG}
 
 tyw tg text "finish_job name=${SLURM_JOB_NAME} id=${SLURM_JOB_ID} array=${SLURM_ARRAY_TASK_ID:-0} time=$(date '+%Y-%m-%d %H:%M:%S')"

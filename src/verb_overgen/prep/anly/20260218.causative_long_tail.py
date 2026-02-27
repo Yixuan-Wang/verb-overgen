@@ -5,7 +5,7 @@
 
 import marimo
 
-__generated_with = "0.19.11"
+__generated_with = "0.20.1"
 app = marimo.App(width="medium")
 
 
@@ -39,8 +39,21 @@ def _(os):
 
 @app.cell
 def _(pl):
-    dataset = pl.read_parquet("./data/pychildes/pychildes-morphosyntax_postprocess.20260212_20251024.parquet")
+    dataset_main = pl.read_parquet("./data/pychildes/pychildes-morphosyntax-tokenized.20251024.parquet")
+    dataset_annotation = pl.read_parquet("./data/pychildes/pychildes-morphosyntax_annotation-20260221.20251024.parquet")
+
+    dataset = dataset_main.join(dataset_annotation, on=["id_file", "id_utterance"])
     return (dataset,)
+
+
+@app.cell
+def _(pl):
+    expr_parse = pl.struct(
+                pl.col("syntax").struct.field("to_index").alias("arc"),
+                pl.col("syntax").struct.field("rel").alias("rel"),
+                pl.col("morph").struct.field("lemma").alias("word"),
+            ).alias("parse")
+    return (expr_parse,)
 
 
 @app.cell
@@ -76,27 +89,17 @@ def _(create_parse_graph, draw_parse_graph, pl):
 @app.cell
 def _(dataset, pl):
     df_make = dataset.filter(pl.col("morph").struct.field("lemma").list.contains(item="make"))
-    return
+    return (df_make,)
 
 
 @app.cell
-def _(dataset, extract_periphrastic_verb, partial, pl):
-    dataset.select(
-        pl.col("parse").map_elements(partial(extract_periphrastic_verb, support_verb="make"), pl.List(pl.String))
+def _(df_make, expr_parse, extract_periphrastic_verb, partial, pl):
+    df_make_annotated = df_make.with_columns(
+        expr_parse
+        .map_elements(partial(extract_periphrastic_verb, support_verb="let"), pl.List(pl.String))
+        .alias("target_verb"),
     )
-    return
-
-
-@app.cell
-def _(dataset, partial, pl):
-    df = dataset.filter(pl.col("morph").struct.field("lemma").list.contains("let"))
-    df_let = df.with_columns(
-        pl.col("featured_verbs").list.eval(pl.element().str.strip_prefix("causative:")),
-        pl.col("parse")
-        .map_elements(partial(_extract_periphrastic_verb, support_verb="let"), pl.List(pl.String))
-        .alias("filtered_verbs"),
-    )
-    return (df_let,)
+    return (df_make_annotated,)
 
 
 @app.cell
@@ -104,6 +107,58 @@ def _():
     from verb_overgen.train.lib.validate import VERB_TARGET_5
 
     VERB_TARGET_5
+    return
+
+
+@app.cell
+def _(df_make_annotated, pl):
+    df_make_extended_lemma = df_make_annotated.filter(
+        pl.col("features").list.contains("causative").not_(),
+        pl.col("target_verb").list.len().gt(0),
+    ).select(
+        pl.col("target_verb").list.explode().alias("word").value_counts().struct.unnest()
+    ).sort("count", descending=True)
+    return (df_make_extended_lemma,)
+
+
+@app.cell
+def _(df_make_extended_lemma):
+    df_make_extended_lemma
+    return
+
+
+@app.cell
+def _(pl):
+    df_extended_lemma_annotated = pl.read_csv("./var/pychildes/lexical/extended_lemma.csv").select(pl.all().exclude("count"))
+    return (df_extended_lemma_annotated,)
+
+
+@app.cell
+def _(df_extended_lemma_annotated):
+    df_extended_lemma_is_verb = df_extended_lemma_annotated.filter("is_usually_verb").select("word")
+    # df_extended_lemma_is_verb.write_csv("./data/pychildes/lexical/extended_causative_verb_lemma.csv")
+
+    list_extended_verb = df_extended_lemma_is_verb.to_series().to_list()
+    return (list_extended_verb,)
+
+
+@app.cell
+def _(pl):
+    pl.read_csv("./data/pychildes/lexical/extended_causative_verb_lemma.csv").select("word").to_series().to_list()
+    return
+
+
+@app.cell
+def _(df_make_annotated, list_extended_verb, pl):
+    df_make_annotated.filter(
+        pl.col("target_verb").list.set_intersection(list_extended_verb).list.len() > 0
+    )
+    return
+
+
+@app.cell
+def _(df_make_annotated, pl):
+    df_make_annotated.filter(pl.col("features").list.contains("causative"))
     return
 
 

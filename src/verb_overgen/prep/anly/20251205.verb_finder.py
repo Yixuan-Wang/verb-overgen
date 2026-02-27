@@ -4,10 +4,10 @@
 
 import marimo
 
-__generated_with = "0.19.11"
+__generated_with = "0.20.1"
 app = marimo.App(
     width="medium",
-    css_file="/home/tomyxw/Projects/2025/verb-overgen/verb-overgen/notebook.css",
+    css_file="/project/6105902/tomyxw/2025/verb-overgen/verb-overgen/notebook.css",
 )
 
 

@@ -7,6 +7,7 @@ from typing import TypedDict
 from loguru import logger
 import pyarrow as pa
 import regex
+import polars as pl
 
 try:
     import spacy
@@ -238,6 +239,14 @@ BIDGOOD_VERBS: Final = {
 }
 
 LIST_CAUSATIVE_VERBS = [*BIDGOOD_VERBS["intransitive_only"], "sneeze", "cough"]
+
+@Lazy
+def LIST_EXTENDED_CAUSATIVE_VERBS() -> list[str]:
+    set_extended_verb = set(pl.read_csv("./data/pychildes/lexical/extended_causative_verb_lemma.csv").select("word").to_series().to_list())
+    set_extended_verb -= set(LIST_CAUSATIVE_VERBS)
+    set_extended_verb -= {"be", "do", "have", "get", "make", "let", "help"}
+    
+    return list(set_extended_verb)
 
 class BaseSpacyParser:
     def __init__(self):

@@ -361,11 +361,16 @@ def remove_entrenchment(dataset: DatasetPyChildes, *, randgen: torch.Generator |
     
     for verb, count in zip(df_causative_count["verb"], df_causative_count["count"]):
         seed = torch.randint(0, 1_000_000, (1,)).item() if randgen else None
-        df_sample = dataset.dataframe.filter(
+        df_entrenched = dataset.dataframe.filter(
             pl.col("featured_verbs").list.eval(
                 pl.element().struct["feature"].eq(FEATURE_CAUSATIVE_ENTRENCHED) & pl.element().struct["verb"].eq(verb)
             ).list.any(),
-        ).sample(count, seed=seed)
+        )
+        if len(df_entrenched) < count:
+            logger.warning(f"Not enough entrenched (but not preemptive) samples for verb '{verb}' to match the count of preemptive samples. Requested {count}, but only {len(df_entrenched)} available. ")
+            continue
+        
+        df_sample = df_entrenched.sample(count, seed=seed)
         dataset.index_should_remove.update(df_sample["index"])
 
 
@@ -374,7 +379,7 @@ if __name__ == "__main__":
     from torch.utils.data import DataLoader
 
     PATH_MAIN = "./data/pychildes/pychildes-morphosyntax-tokenized.20251024.parquet"
-    PATH_ANNOTATION = "./data/pychildes/pychildes-morphosyntax_annotation-20260221.20251024.parquet"
+    PATH_ANNOTATION = "./data/pychildes/pychildes-morphosyntax_annotation-20260225.20251024.parquet"
 
     dataset = DatasetPyChildes.from_path(
         input_path_main=Path(PATH_MAIN),
