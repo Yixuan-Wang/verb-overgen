@@ -76,7 +76,7 @@ class DatasetOvergen(TorchDataset[DataOneOvergen]):
     def __getitem__(self, index: int) -> DataOneOvergen:
         input_ids = self.dataframe.item(index, "input_ids")
         data = cast(DataOneOvergen, get_one_data(input_ids))
-        data["index_sentence"] = index
+        data["index_sentence"] = self.dataframe.item(index, "index_sentence") 
         data["verb"] = self.dataframe.item(index, "verb")
         data["kind"] = self.dataframe.item(index, "kind")
         return data
