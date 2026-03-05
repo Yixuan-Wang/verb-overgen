@@ -50,7 +50,8 @@ def notify(event: str, line: int | None = None):
 
 def load_direnv():
     env_json = sh.direnv("export", "json")
-    os.environ.update(json.loads(str(env_json)))
+    if env_json:
+        os.environ.update(json.loads(str(env_json)))
 
 
 def main():
@@ -63,8 +64,8 @@ def main():
     seed, shuffle_seed, subset_seed = SEEDS[seed_idx]
     subset = SUBSETS[subset_idx]
 
-    sh.python(
-        "-m", "verb_overgen.train.train",
+    sh.uv(
+        "run", "-m", "verb_overgen.train.train",
         "trainer.max_epochs=10",
         f"seed={seed}",
         f"data.train.shuffle_seed={shuffle_seed}",
