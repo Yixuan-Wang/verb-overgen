@@ -81,7 +81,7 @@ class DatasetPyChildes(Dataset[DataOnePyChildes]):
     def _load_data(cls, input_path_main: Path, input_path_annotation: Path, *, max_len: int):
         df_main = pl.read_parquet(input_path_main)
         df_annotation = pl.read_parquet(input_path_annotation)
-        
+
         num_rows = len(df_main)
 
         logger.info("Joining main dataset and annotation dataset.")
@@ -348,6 +348,11 @@ def remove_entrenchment(dataset: DatasetPyChildes, *, randgen: torch.Generator |
     """
     Warning:
         This actually removes all non-preemption entrenchment samples.
+
+    Usage:
+        ```python
+        remove_entrenchment(dataset, randgen=torch.Generator().manual_seed(42))
+        ```
     """
     df_causative_count = (
         dataset.dataframe.filter(pl.col("features").list.contains(FEATURE_CAUSATIVE))
@@ -358,7 +363,7 @@ def remove_entrenchment(dataset: DatasetPyChildes, *, randgen: torch.Generator |
             pl.col("featured_verbs").struct["verb"].value_counts().struct.unnest()
         )
     )
-    
+
     for verb, count in zip(df_causative_count["verb"], df_causative_count["count"]):
         seed = torch.randint(0, 1_000_000, (1,)).item() if randgen else None
         df_entrenched = dataset.dataframe.filter(
@@ -369,10 +374,26 @@ def remove_entrenchment(dataset: DatasetPyChildes, *, randgen: torch.Generator |
         if len(df_entrenched) < count:
             logger.warning(f"Not enough entrenched (but not preemptive) samples for verb '{verb}' to match the count of preemptive samples. Requested {count}, but only {len(df_entrenched)} available. ")
             continue
-        
+
         df_sample = df_entrenched.sample(count, seed=seed)
         dataset.index_should_remove.update(df_sample["index"])
 
+def remove_token(dataset: DatasetPyChildes, token_id: int, *, sample_frac: float = 1.0, seed: int | None = None):
+    """
+    Remove samples containing a specific token.
+
+    Args:
+        dataset: The dataset from which to remove samples.
+        token_id: The token ID to filter by. All samples containing this token will be removed.
+        sample_frac: If less than 1.0, randomly sample a fraction of the matching samples to remove instead of all. Must be between 0 and 1.
+        seed: An optional random seed for reproducibility when sampling. Ignored if `sample_frac` is 1.0.
+    """
+    df_filter = dataset.dataframe.filter(pl.col("input_ids").list.contains(token_id))
+
+    if sample_frac < 1.0:
+        df_filter = df_filter.sample(fraction=sample_frac, seed=seed)
+
+    dataset.index_should_remove.update(df_filter["index"])
 
 if __name__ == "__main__":
 
@@ -389,8 +410,17 @@ if __name__ == "__main__":
         max_len=512,
     )
 
+    from verb_overgen.train.lib.utils import load_train_config
+    from verb_overgen.train.train import TrainingSession
+
+    _session = TrainingSession(load_train_config())
+    tokenizer = _session.setup_tokenizer()
+
+    token_make: int = tokenizer._tokenizer.token_to_id("make")
+
+
     with __import__("ipdb").launch_ipdb_on_exception():
-        remove_entrenchment(dataset, randgen=torch.Generator().manual_seed(42))
+        remove_token(dataset, token_make)
 
     randgen_train_shuffling = torch.Generator()
     randgen_train_shuffling.manual_seed(23)
@@ -410,7 +440,7 @@ if __name__ == "__main__":
         # list_count_effective_token.append(count_effective_token)
         if batch.get("count_removed", 0) > 0:
             __import__("IPython").embed(using=False)
-        
+
         count_removed += batch.get("count_removed", 0)
         # seq_length = batch["seq_length"]
         # list_count_effective_token.append(seq_length.float().sum())
