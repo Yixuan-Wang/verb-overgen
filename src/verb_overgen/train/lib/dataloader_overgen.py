@@ -28,6 +28,18 @@ class DataBatchOvergen(DataBatch, TypedDict):
     verb: list[str]
     kind: list[str]
 
+def clean_dataset_overgen(dataset: pl.DataFrame) -> pl.DataFrame:
+    assert "input_ids" in dataset.columns
+    assert "index_sentence" in dataset.columns
+    assert "verb" in dataset.columns
+    assert "kind" in dataset.columns
+
+    dataset = dataset.filter(pl.col("kind") != "sentence_context")
+
+    dataset = dataset.with_columns(
+        pl.col("input_ids").pipe(strip_last_token).alias("input_ids"),
+    )
+    return dataset
 
 class DatasetOvergen(TorchDataset[DataOneOvergen]):
     def __init__(self, *, dataframe: pl.DataFrame, token_id_pad: int) -> None:
@@ -52,17 +64,7 @@ class DatasetOvergen(TorchDataset[DataOneOvergen]):
     @classmethod
     def _load_data(cls, input_path) -> pl.DataFrame:
         dataset = pl.read_parquet(input_path)
-        assert "input_ids" in dataset.columns
-        assert "index_sentence" in dataset.columns
-        assert "verb" in dataset.columns
-        assert "kind" in dataset.columns
-
-        # TODO: For now we temporarily remove the context part.
-        dataset = dataset.filter(pl.col("kind") != "sentence_context")
-
-        dataset = dataset.with_columns(
-            pl.col("input_ids").pipe(strip_last_token).alias("input_ids"),
-        )
+        dataset = clean_dataset_overgen(dataset)
         return dataset
 
     def create_subset_for_debug(self, n_samples: int):
