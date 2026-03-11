@@ -419,8 +419,8 @@ if __name__ == "__main__":
     token_make: int = tokenizer._tokenizer.token_to_id("make")
 
 
-    with __import__("ipdb").launch_ipdb_on_exception():
-        remove_token(dataset, token_make)
+    # with __import__("ipdb").launch_ipdb_on_exception():
+    #     remove_token(dataset, token_make)
 
     randgen_train_shuffling = torch.Generator()
     randgen_train_shuffling.manual_seed(23)
@@ -433,16 +433,36 @@ if __name__ == "__main__":
         # generator=randgen_train_shuffling,
     )
 
+
+
     count_removed = 0
+    from verb_overgen.train.lib.validate import VERB_TARGET_5
+    
+    df_verb_base = pl.DataFrame({"verb": VERB_TARGET_5})
+    list_df_verb_count = []
+
     for i_batch, batch in enumerate(dataloader):
         # input_ids = batch["input_ids"]
         # count_effective_token = ((input_ids != 0) & (input_ids != 1)).sum().item()
         # list_count_effective_token.append(count_effective_token)
-        if batch.get("count_removed", 0) > 0:
-            __import__("IPython").embed(using=False)
+        # if batch.get("count_removed", 0) > 0:
+        #     __import__("IPython").embed(using=False)
 
-        count_removed += batch.get("count_removed", 0)
-        # seq_length = batch["seq_length"]
-        # list_count_effective_token.append(seq_length.float().sum())
+        # count_removed += batch.get("count_removed", 0)
+        batch_index: list[int] = batch["index"]
+        df_verb_count = dataset.dataframe[batch_index].select("featured_verbs").explode("featured_verbs").filter(
+            pl.col("featured_verbs").is_null().not_()
+        ).select(pl.col("featured_verbs").struct["verb"]).filter(pl.col("verb").is_in(VERB_TARGET_5)).select(
+            pl.col("verb").value_counts().struct.unnest()
+        )
+        
+        list_df_verb_count.append(df_verb_count.join(df_verb_base, on="verb", how="right").fill_null(0).with_columns(
+            pl.lit(i_batch).alias("batch_index")
+        ))
+        
+    df_verb_count = pl.concat(list_df_verb_count)
+    
+    __import__("IPython").embed(using=False)
+        # dataset.dataframe.[]
 
     print(count_removed)
