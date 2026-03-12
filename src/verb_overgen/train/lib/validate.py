@@ -15,27 +15,7 @@ from torch.nn.utils.rnn import unpad_sequence
 
 import lightning as ptl
 from verb_overgen.util.misc_util import ensure_dir
-
-VERB_TARGET_5 = ["laugh", "cry", "sing", "smile", "sleep"]
-VERB_TARGET_17 = [
-    "appear",
-    "chortle",
-    "chuckle",
-    "cry",
-    "descend",
-    "frown",
-    "giggle",
-    "glow",
-    "grin",
-    "groan",
-    "laugh",
-    "rise",
-    "sing",
-    "sleep",
-    "smile",
-    "sneeze",
-    "vanish",
-]
+from verb_overgen.common.features import VERB_TARGET_5, VERB_TARGET_17 # noqa: F401
 
 class EvalCallback(ptl.Callback):
     def __init__(self):
