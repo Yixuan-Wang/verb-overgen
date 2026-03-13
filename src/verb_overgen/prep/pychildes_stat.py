@@ -118,7 +118,7 @@ if __name__ == "__main__":
     
         # Top noun counts
         case "noun":
-            noun_counts = count_top_noun(df, lower_bound=1000).filter(
+            noun_counts = count_top_noun(df, lower_bound=500).filter(
                 pl.col("lemma").str.contains("^[A-Z]").not_()
             )
             noun_counts.write_csv("./var/top_nouns.csv")
