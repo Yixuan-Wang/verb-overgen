@@ -60,17 +60,19 @@ if __name__ == "__main__":
     dataset_long = dataset_vetted.unpivot(
         on=pl.selectors.starts_with("sentence_"),
         index=~pl.selectors.starts_with("sentence_"),
-        variable_name="sentence_kind",
+        variable_name="kind",
         value_name="sentence",
     )
+
+    dataset_long = dataset_long.with_row_index("index_sentence")
 
     dataset_roberta = dataset_long.pipe(lambda df: cast(pl.DataFrame, pl.from_arrow(SpacyParser()(df.to_arrow()))))
 
     # * How to pivot back
     # dataset_roberta.pipe(lambda df: df.pivot(
-    #     on="sentence_kind",
-    #     values=pl.selectors.by_index(range(df.get_column_index("sentence_kind") + 1, df.width)),
-    #     index=pl.selectors.by_index(range(0, df.get_column_index("sentence_kind")))
+    #     on="kind",
+    #     values=pl.selectors.by_index(range(df.get_column_index("kind") + 1, df.width)),
+    #     index=pl.selectors.by_index(range(0, df.get_column_index("kind")))
     # ))
 
     import tokenizers as hftk
