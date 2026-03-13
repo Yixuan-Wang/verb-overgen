@@ -11,12 +11,12 @@ from verb_overgen.common.features import VERB_TARGET_17, VERB_TARGET_5
 MODEL_PATH = "/model-weights/Qwen3-32B"
 
 SYSTEM_PROMPT = "You are a child literature author tasked with creating engaging and easy-to-understand texts for young children."
-PROMPT = """
+PROMPT = """\
 ### Instructions
 1.  Object Selection: Choose an object from the vocabulary bank that fits naturally with the subject and verb.
 2.  Scene Creation:
     - The scene should be simple and relatable for a young child.
-    - In this scene, the subject causes the object to perform thqe action described by the verb.
+    - In this scene, the subject causes the object to perform the action described by the verb.
 3.  Output Generation:
     - First, write a short sentence describing the context of this action. Without it the action should still be understandable. The context sentence should also contain the subject and the object.
     - Then write the main sentence where the subject makes the object perform the action.
@@ -25,14 +25,22 @@ PROMPT = """
     - Both sentences should be declarative sentences, and quotes are not allowed.
 
 ### Output Format
-The output should only contain two sentences separated by a newline character. For example given subject "{subject}", verb "break", and object "vase", the output should be:
-{subject} knocks over the vase.
-{subject} makes the vase break.
-
+The output should only contain two sentences separated by a newline character. For example given subject "I", verb "break", and object "vase", the output should be:
+I knock over the vase.
+I make the vase break.
+{previous_outputs}
 ### Input
 - Subject: {subject}
 - Verb: {verb}
 - Object Candidates: {object_candidates}
+"""
+
+PROMPT_PREVIOUS = """
+### Previous Outputs
+The following outputs have already been generated for this verb. Prefer to create a different scene.
+---
+{}
+---
 """
 
 RAND_GEN = np.random.default_rng(42)
@@ -64,6 +72,8 @@ def generate_prompt(
     verb: str,
     subject_sampler: ThompsonSampler,
     object_sampler: ThompsonSampler,
+    previous_outputs: list[str],
+    rng: np.random.Generator,
 ):
     while True:
         subject = subject_sampler.sample(1)[0]
@@ -71,10 +81,18 @@ def generate_prompt(
         object_sampler.rng.shuffle(object_candidates)
         object_candidates_str = ", ".join(object_candidates)
 
+        if previous_outputs:
+            sampled = rng.choice(previous_outputs, size=min(3, len(previous_outputs)), replace=False).tolist()
+            filled_previous_output = PROMPT_PREVIOUS.format("\n---\n".join(sampled))
+        else:
+            filled_previous_output = ""
+        
+
         prompt_filled = PROMPT.format(
             subject=subject,
             verb=verb,
             object_candidates=object_candidates_str,
+            previous_outputs=filled_previous_output,
         )
 
         yield {
@@ -176,17 +194,13 @@ class LLMGenSGL:
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--alpha", type=float, default=0.3, help="Power smoothing exponent for prior distribution (0=uniform, 1=unsmoothed)")
-    parser.add_argument("--prompt-per-verb", type=int, default=5) # FIXME: change to 75 after prompt is fixed
+    parser.add_argument("--prompt-per-verb", type=int, default=75)
     parser.add_argument("--tp-size", type=int, default=2)
     parser.add_argument("--max-running-requests", type=int, default=32)
     parser.add_argument("--backend", type=str, default="sgl", choices=["mock", "sgl", "gemini"], help="LLM backend to use")
     parser.add_argument("--gemini-model", type=str, default="gemini-3-flash-preview", help="Gemini model name (only used with --backend gemini)")
     parser.add_argument("--output", type=str, required=True)
     args = parser.parse_args()
-    
-    raise NotImplementedError("""\
-        Before running script, make sure to fix prompt per verb and the verb list.
-        """)
 
     dataset_names = pl.read_csv("./data/testset/gen/names.csv").extend(
         pl.read_csv("./data/testset/gen/top_pronouns.csv").rename({"count_is_pronoun": "count_is_noun"})
@@ -217,14 +231,17 @@ if __name__ == "__main__":
     object_alpha = np.concatenate([names_alpha, nouns_alpha])
 
     all_results: list[dict] = []
-    for verb in ["laugh"]: # FIXME: change to VERB_TARGET_17 or VERB_TARGET_5 after prompt is fixed
+    for verb in VERB_TARGET_5: # FIXME: change to VERB_TARGET_17 sans VERB_TARGET_5
         subject_sampler = ThompsonSampler(names_labels, names_alpha, RAND_GEN)
         object_sampler = ThompsonSampler(object_labels, object_alpha, RAND_GEN)
+        previous_outputs: list[str] = []
 
         gen_prompt = generate_prompt(
             verb=verb,
             subject_sampler=subject_sampler,
             object_sampler=object_sampler,
+            previous_outputs=previous_outputs,
+            rng=RAND_GEN,
         )
         for round_idx in range(args.prompt_per_verb):
             prompt_row = next(gen_prompt)
@@ -235,6 +252,8 @@ if __name__ == "__main__":
 
             output_text = result.get("output_text")
             if output_text:
+                previous_outputs.append(output_text)
+
                 lines = output_text.strip().split("\n")
                 if len(lines) >= 2:
                     second_line = lines[1]
