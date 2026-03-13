@@ -6,3 +6,25 @@ i.e. a verb that can be used as a causative but is not used as a causative here.
 """
 
 FEATURE_CAUSATIVE: Final = "causative"
+
+VERB_TARGET_5: Final[list[str]] = ["laugh", "cry", "sing", "smile", "sleep"]
+
+VERB_TARGET_17: Final[list[str]] = [
+    "appear",
+    "chortle",
+    "chuckle",
+    "cry",
+    "descend",
+    "frown",
+    "giggle",
+    "glow",
+    "grin",
+    "groan",
+    "laugh",
+    "rise",
+    "sing",
+    "sleep",
+    "smile",
+    "sneeze",
+    "vanish",
+]

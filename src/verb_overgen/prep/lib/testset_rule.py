@@ -16,12 +16,17 @@ def alternate_transitive(sentence_target: str, verb: str) -> str:
         sentence_target (str): The original target sentence.
         verb (str): The verb to be transformed.
     """
-    if re.search("o$|ch$|sh$|x$|s$|z$", verb):
-        return re.sub(rf"makes (?P<object>.*) (?P<verb>{verb})", r"\g<verb>es \g<object>", sentence_target)
-    elif re.search(r"(?<![aeiou])y$", verb):
-        return re.sub(rf"makes (?P<object>.*) (?P<verb>{verb})", rf"{verb[:-1]}ies \g<object>", sentence_target)
+    if "makes" in sentence_target:
+        if re.search("o$|ch$|sh$|x$|s$|z$", verb):
+            return re.sub(rf"makes (?P<object>.*) (?P<verb>{verb})", r"\g<verb>es \g<object>", sentence_target)
+        elif re.search(r"(?<![aeiou])y$", verb):
+            return re.sub(rf"makes (?P<object>.*) (?P<verb>{verb})", rf"{verb[:-1]}ies \g<object>", sentence_target)
+        else:
+            return re.sub(rf"makes (?P<object>.*) (?P<verb>{verb})", r"\g<verb>s \g<object>", sentence_target)
+    elif "make" in sentence_target:
+        return re.sub(rf"make (?P<object>.*) (?P<verb>{verb})", r"\g<verb> \g<object>", sentence_target)
     else:
-        return re.sub(rf"makes (?P<object>.*) (?P<verb>{verb})", r"\g<verb>s \g<object>", sentence_target)
+        raise ValueError(f"Sentence does not contain 'make' or 'makes': {sentence_target}")
 
 
 class TestStringMethods(unittest.TestCase):
@@ -42,7 +47,10 @@ class TestStringMethods(unittest.TestCase):
             alternate_transitive("Tom makes Jerry smile", verb="smile"),
             "Tom smiles Jerry",
         )
-
+        self.assertEqual(
+            alternate_transitive("We make the baby watch", verb="watch"),
+            "We watch the baby",
+        )
 
 if __name__ == "__main__":
     unittest.main()
