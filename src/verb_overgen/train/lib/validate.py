@@ -88,7 +88,21 @@ def perplexity(token_probs: pl.Expr) -> pl.Expr:
     mean_nll = nlls.list.mean()
     ppl = mean_nll.exp()
     return ppl
-    
+
+def last_sentence_index(input_ids: pl.Expr, token_id_bos: int) -> pl.Expr:
+    """Extract the index of the beginning of the last sentence from a list of token IDs, using the BOS token as a delimiter.
+
+    Warning:
+        This returns the index with <BOS> at index 0. When used on input_ids, this will point to the last <BOS> token.
+        When used on log_probs, this will point to the next-token-prediction to the last <BOS> token.
+    """
+    return (
+        input_ids.list.eval(pl.element().eq(token_id_bos).arg_true())
+         # The last BOS marks the start of the last sentence.
+        .list.last()
+         # If there's no BOS token, it will return null, propagating the error.
+    )
+
 def nll(token_probs: pl.Expr) -> pl.Expr:
     """Compute sentence-level negative log-likelihood (NLL) from token probabilities.
     
