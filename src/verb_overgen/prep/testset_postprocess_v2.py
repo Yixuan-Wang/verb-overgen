@@ -51,8 +51,7 @@ if __name__ == "__main__":
 
     dataset_vetted = dataset_vetted.select(
         ~pl.selectors.starts_with("sentence"),
-        pl.concat_str("sentence_context", pl.lit(" "), "sentence_causative").alias("sentence_context_causative"),
-        pl.concat_str("sentence_context", pl.lit(" "), "sentence_transitive").alias("sentence_context_transitive"),
+        "sentence_context",
         "sentence_causative",
         "sentence_transitive",
     )
@@ -64,16 +63,7 @@ if __name__ == "__main__":
         value_name="sentence",
     )
 
-    dataset_long = dataset_long.with_row_index("index_sentence")
-
     dataset_roberta = dataset_long.pipe(lambda df: cast(pl.DataFrame, pl.from_arrow(SpacyParser()(df.to_arrow()))))
-
-    # * How to pivot back
-    # dataset_roberta.pipe(lambda df: df.pivot(
-    #     on="kind",
-    #     values=pl.selectors.by_index(range(df.get_column_index("kind") + 1, df.width)),
-    #     index=pl.selectors.by_index(range(0, df.get_column_index("kind")))
-    # ))
 
     import tokenizers as hftk
     tokenizer_file = "./data/tokenizer/1024-wordlevel/tokenizer.json"
@@ -89,6 +79,45 @@ if __name__ == "__main__":
         pl.col("roberta").struct.field("lemma").list.join(" ").map_batches(tokenize, pl.List(pl.Int64)).alias("input_ids")
     )
 
-    # __import__("IPython").embed(using=False)
-    dataset_tokenized.write_parquet("./data/testset/output/testset_gemini_voi-5.20260312T2040.parquet")
+    def concat_roberta(lhs: pl.Expr, rhs: pl.Expr):
+        return pl.struct(
+            pl.concat_list(lhs.struct["lemma"], rhs.struct["lemma"]).alias("lemma"),
+            pl.concat_list(lhs.struct["morph"], rhs.struct["morph"]).alias("morph"),
+            pl.lit([], pl.List(pl.Int32)).alias("dep_arc"),
+            pl.lit([], pl.List(pl.String)).alias("dep_rel"),
+            pl.concat_list(lhs.struct["pos_ud"], rhs.struct["pos_ud"]).alias("pos_ud"),
+            pl.concat_list(lhs.struct["pos_penn"], rhs.struct["pos_penn"]).alias("pos_penn"),
+        )
+        
+    def concat_input_ids(lhs: pl.Expr, rhs: pl.Expr):
+        return pl.concat_list(lhs.list.slice(0, lhs.list.len() - 1), rhs)
+    
+    len_metadata_column = dataset_tokenized.get_column_index("kind")
+    dataset_tokenized_wide = dataset_tokenized.pipe(lambda df: df.pivot(
+        on="kind",
+        values=pl.selectors.by_index(range(len_metadata_column + 1, df.width)),
+        index=pl.selectors.by_index(range(0, len_metadata_column))
+    ))
+    
+    dataset_tokenized_long_context_causative = dataset_tokenized_wide.select(
+         pl.selectors.by_index(range(0, len_metadata_column)),
+         pl.lit("sentence_context_causative").alias("kind"),
+         pl.concat_str("sentence_sentence_context", pl.lit(" "), "sentence_sentence_causative").alias("sentence"),
+         concat_roberta(pl.col("roberta_sentence_context"), pl.col("roberta_sentence_causative")).alias("roberta"),
+         concat_input_ids(pl.col("input_ids_sentence_context"), pl.col("input_ids_sentence_causative")).alias("input_ids"),
+    )
+    dataset_tokenized_long_context_transitive = dataset_tokenized_wide.select(
+         pl.selectors.by_index(range(0, len_metadata_column)),
+         pl.lit("sentence_context_transitive").alias("kind"),
+         pl.concat_str("sentence_sentence_context", pl.lit(" "), "sentence_sentence_transitive").alias("sentence"),
+         concat_roberta(pl.col("roberta_sentence_context"), pl.col("roberta_sentence_transitive")).alias("roberta"),
+         concat_input_ids(pl.col("input_ids_sentence_context"), pl.col("input_ids_sentence_transitive")).alias("input_ids"),
+    )
+    dataset_tokenized_long_final = pl.concat([
+        dataset_tokenized.filter(pl.col("kind") != "sentence_context"),
+        dataset_tokenized_long_context_causative,
+        dataset_tokenized_long_context_transitive,
+    ])
+    
+    dataset_tokenized_long_final.with_row_index("index_sentence").write_parquet("./data/testset/output/testset_gemini_voi-5.20260312T2040.parquet")
     
