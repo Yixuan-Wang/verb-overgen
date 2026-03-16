@@ -5,6 +5,9 @@ import polars as pl
 import sglang as sgl
 from sglang.srt.parser.reasoning_parser import ReasoningParser
 from transformers import AutoTokenizer
+from loguru import logger
+
+from tqdm import tqdm
 
 from verb_overgen.common.features import VERB_TARGET_5, VERB_TARGET_17
 
@@ -195,7 +198,7 @@ if __name__ == "__main__":
         default=0.3,
         help="Power smoothing exponent for prior distribution (0=uniform, 1=unsmoothed)",
     )
-    parser.add_argument("--prompt-per-verb", type=int, default=75)
+    parser.add_argument("--round-per-verb", type=int, default=75)
     parser.add_argument("--tp-size", type=int, default=2)
     parser.add_argument("--max-running-requests", type=int, default=32)
     parser.add_argument(
@@ -241,7 +244,10 @@ if __name__ == "__main__":
     object_weights = np.concatenate([names_weights, nouns_weights])
 
     all_results: list[dict] = []
-    for verb in VERB_TARGET_5:  # FIXME: change to VERB_TARGET_17 sans VERB_TARGET_5
+    _set_verb_target_5 = set(VERB_TARGET_5)
+    verbs = [v for v in VERB_TARGET_17 if v not in _set_verb_target_5]  # FIXME: change to VERB_TARGET_17 sans VERB_TARGET_5
+    for verb in (pbar := tqdm(verbs, desc="verbs")):
+        pbar.set_postfix(verb=verb)
         subject_sampler = WeightedSampler(names_labels, names_weights, RAND_GEN)
         object_sampler = WeightedSampler(object_labels, object_weights, RAND_GEN)
         previous_outputs: list[str] = []
@@ -253,7 +259,7 @@ if __name__ == "__main__":
             previous_outputs=previous_outputs,
             rng=RAND_GEN,
         )
-        for round_idx in range(args.prompt_per_verb):
+        for round_idx in tqdm(range(args.round_per_verb), desc="rounds", leave=False):
             prompt_row = next(gen_prompt)
             result = llm_gen(prompt_row)
             all_results.append({**prompt_row, "llm_gen": result})
@@ -261,5 +267,7 @@ if __name__ == "__main__":
             output_text = result.get("output_text")
             if output_text:
                 previous_outputs.append(output_text)
+            else:
+                logger.error(f"Error generating output for verb '{verb}' in round {round_idx}: {result.get('error')}")
 
     pl.DataFrame(all_results, schema_overrides={"llm_gen": _DTYPE_PARSED_RESULTS}).write_parquet(args.output)

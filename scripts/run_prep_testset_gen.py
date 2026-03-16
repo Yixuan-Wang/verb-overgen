@@ -3,10 +3,9 @@
 #SBATCH --job-name=testset-gen-gemini
 #SBATCH --cpus-per-task=4
 #SBATCH --mem=16G
-#SBATCH --time=5:00:00
+#SBATCH --time=6:30:00
 #SBATCH -o logs/slurm/slurm-%A_%a_%x.out.txt
 #SBATCH -e logs/slurm/slurm-%A_%a_%x.err.txt
-
 # /// script
 # dependencies = ["sh", "numpy"]
 # ///
@@ -50,7 +49,7 @@ def main():
     sh.uv(
         "run", "-m", "verb_overgen.prep.testset_gen",
         "--backend", "gemini",
-        "--output", f"./var/testset/overgen-gemini-voi_5-{time_now}.parquet",
+        "--output", f"./var/testset/overgen-gemini-voi_12-{time_now}.parquet",
         _fg=True,
     )
 
