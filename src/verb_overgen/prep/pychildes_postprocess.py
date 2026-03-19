@@ -113,7 +113,7 @@ def mark_causative(
     }
 
 
-if __name__ == "__main__":
+def old_logic():
     dataset, has_changed = load_data("./data/pychildes/pychildes-morphosyntax-tokenized.20251024.parquet")
     OUTPUT_PATH = "./data/pychildes/pychildes-morphosyntax_annotation-20260225.20251024.parquet"
     
@@ -150,3 +150,17 @@ if __name__ == "__main__":
     dataset_annotation.sink_parquet(OUTPUT_PATH)
     elapsed = time.perf_counter() - t0
     print(f"mark_causative took {elapsed:.3f}s")
+
+def debug():
+    from verb_overgen.prep.lib.pychildes_rule_causative import RuleLet
+
+    dataset, has_changed = load_data("./data/pychildes/pychildes-morphosyntax-tokenized.20251024.parquet")
+    # OUTPUT_PATH = "./data/pychildes/pychildes-morphosyntax_annotation-20260225.20251024.parquet"
+    # dataset = dataset.head(10000)
+    dataset_let_verb = RuleLet.find(dataset)
+    
+    __import__("IPython").embed(using=False)
+
+
+if __name__ == "__main__":
+    debug()
