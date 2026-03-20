@@ -79,19 +79,18 @@ class DatasetPyChildes(Dataset[DataOnePyChildes]):
 
     @classmethod
     def _load_data(cls, input_path_main: Path, input_path_annotation: Path, *, max_len: int):
-        df_main = pl.read_parquet(input_path_main)
-        df_annotation = pl.read_parquet(input_path_annotation)
-
-        num_rows = len(df_main)
+        lf_main = pl.scan_parquet(input_path_main)
+        lf_annotation = pl.scan_parquet(input_path_annotation)
 
         logger.info("Joining main dataset and annotation dataset.")
-        # df = df_main.join(df_annotation, on=["id_file", "id_utterance"], validate="1:1", coalesce=True)
-        assert num_rows == len(df_annotation), "The main dataset and annotation dataset must have the same number of rows."
-        assert df_main[0, "id_file"] == df_annotation[0, "id_file"] and df_main[0, "id_utterance"] == df_annotation[0, "id_utterance"], "The main dataset and annotation dataset must be aligned in the same order."
-        assert df_main[num_rows - 1, "id_file"] == df_annotation[num_rows - 1, "id_file"] and df_main[num_rows - 1, "id_utterance"] == df_annotation[num_rows - 1, "id_utterance"], "The main dataset and annotation dataset must be aligned in the same order."
-        df = df_main.with_columns(
-            df_annotation["features"],
-            df_annotation["featured_verbs"],
+        df = (
+            lf_main
+            .join(lf_annotation, on=["id_file", "id_utterance"], how="left", coalesce=True, maintain_order="left")
+            .with_columns(
+                pl.col("features").fill_null([]),
+                pl.col("featured_verbs").fill_null([]),
+            )
+            .collect()
         )
 
         logger.info("Processing dataset for training.")

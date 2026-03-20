@@ -3,12 +3,13 @@ import itertools
 from functools import partial
 
 import polars as pl
+from typing_extensions import deprecated
 
 from verb_overgen.prep.lib.syntactic import Parse, ParseWithPos
 
 EXPR_PARSE = pl.col("parse")
 
-
+@deprecated("Favor comp_children_index for better performance.")
 def comp_children(
     parse: Parse,
     *,
@@ -113,8 +114,96 @@ def has_comp_children(
         for arc, rel in zip(list_arc, list_rel)
     )
 
+def has_comp_children_and_patient(
+    parse: Parse,
+    *,
+    target: str,
+) -> bool:
+    """Return True if any occurrence of target has COMP children AND
+    (OBJ children XOR its COMP children have SUBJ children).
 
-class RuleLet:
+    The XOR condition captures two causative patterns:
+    - 'make him cry'    , OBJ child of target, no SUBJ on COMP child
+    - 'make him see it' , causee parsed as SUBJ of COMP child, no OBJ on target
+    """
+    list_word, list_arc, list_rel = parse["word"], parse["arc"], parse["rel"]
+
+    if target not in list_word:
+        return False
+
+    for index1, word in enumerate(list_word, 1):
+        if word != target:
+            continue
+
+        children = [
+            (j + 1, rel)
+            for j, (arc, rel) in enumerate(zip(list_arc, list_rel))
+            if arc == index1
+        ]
+
+        comp_child_index1s = [
+            child_index1
+            for child_index1, rel in children
+            if rel == "COMP"
+            and not any(
+                arc == child_index1 and rel_gc == "INF"
+                for arc, rel_gc in zip(list_arc, list_rel)
+            )
+        ]
+        if not comp_child_index1s:
+            continue
+
+        target_has_obj = any(rel == "OBJ" for _, rel in children)
+        comp_has_subj = any(
+            arc == child_index1 and rel == "SUBJ"
+            for child_index1 in comp_child_index1s
+            for arc, rel in zip(list_arc, list_rel)
+        )
+
+        if target_has_obj ^ comp_has_subj:
+            return True
+
+    return False
+
+class MixinRuleFind:
+    PERIPHERAL_VERB: str
+    """The peripheral verb to look for."""
+    
+    MAP_RULE_PREFILTER: dict[str, pl.Expr]
+    """Pre-filter rules to narrow down candidate sentences."""
+    
+    MAP_RULE_OVERRIDE: dict[str, pl.Expr]
+    """Override rules to directly label sentences as True/False. Unspecified sentences will use heuristic rules to decide."""
+
+    MAP_RULE_HEURISTIC: dict[str, pl.Expr]
+    """Heuristic rules to decide whether a sentence contains causative. The final decision is a conjunction of all rules."""
+
+    @classmethod
+    def find(cls, df: pl.DataFrame | pl.LazyFrame) -> pl.DataFrame:
+        """Find causative sentences with the peripheral verb in the given DataFrame, and return the verb indices in the column `verb_causative_{PERIPHERAL_VERB}`."""
+        df_original = df
+        df_prefiltered = df_original.lazy().filter(cls.MAP_RULE_PREFILTER.values())
+
+        df_causative = (
+            df_prefiltered.filter(
+                pl.coalesce(
+                    *cls.MAP_RULE_OVERRIDE.values(),
+                    pl.all_horizontal(*cls.MAP_RULE_HEURISTIC.values()),
+                )
+            )
+            .select(
+                pl.selectors.starts_with("id"),
+                EXPR_PARSE.map_elements(
+                    partial(comp_children_index, target=cls.PERIPHERAL_VERB),
+                    pl.List(pl.Int32),
+                ).alias(f"verb_causative_{cls.PERIPHERAL_VERB}"),
+            )
+            .collect()
+        )
+
+        return cast(pl.DataFrame, df_causative)
+
+class RuleLet(MixinRuleFind):
     PERIPHERAL_VERB = "let"
 
     try:
@@ -140,11 +229,11 @@ class RuleLet:
         # The causative should not contain "let's"
         "rule_not_imp_let_us": ~pl.col("content_raw").str.contains(r"\b[Ll]et's\b"),
         # The causative should not contain "let go", like "let go of the balloon"
-        "rule_not_let_go": ~pl.col("sentence").str.contains(r"\let go\b"),
+        "rule_not_let_go": ~pl.col("sentence").str.contains(r"\blet go\b"),
         # The "let" should have a `COMP` (complement children)
-        "rule_has_comp_children": (
+        "rule_has_comp_children_and_patient": (
             EXPR_PARSE.map_elements(
-                partial(has_comp_children, target=PERIPHERAL_VERB),
+                partial(has_comp_children_and_patient, target=PERIPHERAL_VERB),
                 pl.Boolean,
             )
         ),
@@ -155,26 +244,31 @@ class RuleLet:
         ),
     }
 
-    @classmethod
-    def find(cls, df: pl.DataFrame | pl.LazyFrame) -> pl.DataFrame:
-        df_original = df
-        df_prefiltered = df_original.lazy().filter(cls.MAP_RULE_PREFILTER.values())
+class RuleMake(MixinRuleFind):
+    PERIPHERAL_VERB = "make"
 
-        df_causative = (
-            df_prefiltered.filter(
-                pl.coalesce(
-                    *cls.MAP_RULE_OVERRIDE.values(),
-                    pl.all_horizontal(*cls.MAP_RULE_HEURISTIC.values()),
-                )
-            )
-            .select(
-                pl.selectors.starts_with("id"),
-                EXPR_PARSE.map_elements(
-                    partial(comp_children_index, target=cls.PERIPHERAL_VERB),
-                    pl.List(pl.Int32),
-                ).alias(f"verb_causative_{cls.PERIPHERAL_VERB}"),
-            )
-            .collect()
-        )
+    MAP_RULE_PREFILTER = {
+        # The sentence should contain "make" lemma.
+        "rule_has_make": (pl.col("morph").struct.field("lemma").list.contains(item=PERIPHERAL_VERB))
+    }
 
-        return cast(pl.DataFrame, df_causative)
+    MAP_RULE_OVERRIDE = {
+        # We currently don't have override rule for "make".
+    }
+
+    MAP_RULE_HEURISTIC = {
+        # The causative should not contain "make sure"
+        "rule_not_make_sure": ~pl.col("sentence").str.contains(r"\bmake sure\b"),
+        # The "make" should have a `COMP` (complement children) and corresponding patient
+        "rule_has_comp_children_and_patient": (
+            EXPR_PARSE.map_elements(
+                partial(has_comp_children_and_patient, target=PERIPHERAL_VERB),
+                pl.Boolean,
+            )
+        ),
+        # # The "make" should have a subject in its ancestor path.
+        # "rule_has_make_subj": EXPR_PARSE.map_elements(
+        #     partial(has_subj_in_parent, target=PERIPHERAL_VERB),
+        #     pl.Boolean,
+        # ),
+    }

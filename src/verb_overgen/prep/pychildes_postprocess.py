@@ -9,7 +9,7 @@ import polars as pl
 from verb_overgen.common.features import FEATURE_CAUSATIVE, FEATURE_CAUSATIVE_ENTRENCHED
 from verb_overgen.prep.lib.lexical import LIST_CAUSATIVE_VERBS, LIST_EXTENDED_CAUSATIVE_VERBS
 from verb_overgen.prep.lib.pattern_matching import extract_periphrastic_verb
-from verb_overgen.prep.lib.pychildes_rule_causative import RuleLet
+from verb_overgen.prep.lib.pychildes_rule_causative import MixinRuleFind, RuleLet, RuleMake
 from verb_overgen.prep.lib.syntactic import Parse
 
 
@@ -35,6 +35,8 @@ def load_data(file_path: str) -> tuple[pl.LazyFrame, bool]:
     return dataset, has_changed
 
 
+MAP_PERIPHERAL_RULES: dict[str, type[MixinRuleFind]] = { rule.PERIPHERAL_VERB: rule for rule in [RuleLet, RuleMake] }
+
 set_base_causative_verbs = set(LIST_CAUSATIVE_VERBS)
 set_extended_causative_verbs = set(LIST_EXTENDED_CAUSATIVE_VERBS())
 set_all_causative_verbs = set_base_causative_verbs.union(set_extended_causative_verbs)
@@ -44,17 +46,16 @@ class Features(TypedDict):
     features: list[str]
     featured_verbs: list[dict[str, str]]
 
-
+# @__import__("ipdb").iex
 def build_causative_features(row) -> Features:
     list_pos = row["pos"]
     list_word = row["parse"]["word"]
 
     # Collect extracted verbs per support verb
-    map_support_verb_extracted: dict[str, list[int]] = {}
-
-    verb_causative_let: list[int] = row["verb_causative_let"]
-    if verb_causative_let:
-        map_support_verb_extracted["let"] = verb_causative_let
+    map_support_verb_extracted: dict[str, list[int]] = {
+        support_verb: row[f"verb_causative_{support_verb}"] or []
+        for support_verb in MAP_PERIPHERAL_RULES
+    }
 
     # verb_causative_make = extract_periphrastic_verb(
     #     parse=parse,
@@ -140,7 +141,8 @@ DTYPE_FEATURES = pl.Struct(
 def annotate_causative(dataset: pl.LazyFrame) -> pl.LazyFrame:
     # Run each rule that operates at the dataframe level
     rule_results: dict[str, pl.DataFrame] = {
-        "let": RuleLet.find(dataset),
+        name: rule.find(dataset)
+        for name, rule in MAP_PERIPHERAL_RULES.items()
     }
 
     # Left-join all rule results back
@@ -170,7 +172,7 @@ def annotate_causative(dataset: pl.LazyFrame) -> pl.LazyFrame:
 
 def main():
     dataset, has_changed = load_data("./data/pychildes/pychildes-morphosyntax-tokenized.20251024.parquet")
-    OUTPUT_PATH = "./var/pychildes/debug-annotation/pychildes-morphosyntax_annotation_let_20260319.20251024.parquet"
+    OUTPUT_PATH = "./var/pychildes/debug-annotation/pychildes-morphosyntax_annotation_make-let_20260319.20251024.parquet"
 
     if Path(OUTPUT_PATH).exists():
         print(f"Output file {OUTPUT_PATH} already exists. Please remove it before running the script.")
@@ -178,6 +180,7 @@ def main():
 
     t0 = time.perf_counter()
     dataset_annotation = annotate_causative(dataset)
+    dataset_annotation = dataset_annotation.filter(pl.col("features").list.len() > 0)
     dataset_annotation.sink_parquet(OUTPUT_PATH)
     elapsed = time.perf_counter() - t0
     print(f"annotate_causative took {elapsed:.3f}s")
