@@ -98,7 +98,7 @@ def build_causative_features(row) -> Features:
     list_entrenched_causative_verbs = [
         word
         for pos, word in zip(list_pos, list_word)
-        if (word in set_all_causative_verbs and pos in {"verb", "part"}) and word not in set_featured_causative_verbs
+        if (word in set_all_causative_verbs and pos in {"v", "part"}) and word not in set_featured_causative_verbs
     ]
     if list_entrenched_causative_verbs:
         features.add(FEATURE_CAUSATIVE_ENTRENCHED)
