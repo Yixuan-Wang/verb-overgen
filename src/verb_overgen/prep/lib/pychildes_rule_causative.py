@@ -140,7 +140,7 @@ class RuleLet:
         # The causative should not contain "let's"
         "rule_not_imp_let_us": ~pl.col("content_raw").str.contains(r"\b[Ll]et's\b"),
         # The causative should not contain "let go", like "let go of the balloon"
-        "rule_not_let_go": ~pl.col("content_raw").str.contains(r"\b[Ll]et go\b"),
+        "rule_not_let_go": ~pl.col("sentence").str.contains(r"\let go\b"),
         # The "let" should have a `COMP` (complement children)
         "rule_has_comp_children": (
             EXPR_PARSE.map_elements(
