@@ -31,6 +31,32 @@ def comp_children(
         if arc1 == index1_parent and rel == "COMP"
     ]
 
+def comp_children_index(
+    parse: Parse,
+    *,
+    target: str,
+) -> list[int]:
+    """Extract the COMP children index of the given target verb.
+    
+    Warning:
+        The returned index is 0-indexed, which is different from the 1-indexed arc in the parse.
+    """
+    list_word, list_arc, list_rel = parse["word"], parse["arc"], parse["rel"]
+    
+    if target not in list_word:
+        return []
+    
+    if "COMP" not in list_rel:
+        return []
+    
+    return [
+        index0_child
+        for index1_parent, word_parent in enumerate(list_word, 1)
+        if word_parent == target
+        for index0_child, (arc1, rel) in enumerate(zip(list_arc, list_rel))
+        if arc1 == index1_parent and rel == "COMP"
+    ]
+
 
 def has_subj_in_parent(
     parse: Parse,
@@ -144,8 +170,8 @@ class RuleLet:
             .select(
                 pl.selectors.starts_with("id"),
                 EXPR_PARSE.map_elements(
-                    partial(comp_children, target=cls.PERIPHERAL_VERB),
-                    pl.List(pl.String),
+                    partial(comp_children_index, target=cls.PERIPHERAL_VERB),
+                    pl.List(pl.Int32),
                 ).alias(f"verb_causative_{cls.PERIPHERAL_VERB}"),
             )
             .collect()
