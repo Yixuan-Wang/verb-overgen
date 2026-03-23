@@ -17,9 +17,7 @@ wandb:
   project: "25-verb-overgen"
   log_model: false
   save_dir: "./logs/wandb"
-  tags:
-    - packing
-    - full
+  tags: []
 
 tokenizer: "./data/tokenizer/1024-wordlevel/tokenizer.json"
 
@@ -35,7 +33,7 @@ trace:
 data:
   train:
     path: "./data/pychildes/pychildes-morphosyntax-tokenized.20251024.parquet"
-    path_annotation: "./data/pychildes/pychildes-morphosyntax_annotation-20260225.20251024.parquet"
+    path_annotation: "./data/pychildes/pychildes-morphosyntax_annotation-20260321.20251024.parquet"
     # batch_size: 256
     shuffle: true
     shuffle_seed: null

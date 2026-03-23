@@ -418,6 +418,7 @@ class TrainingSession:
         if self.logger_wandb.experiment:
             # Get tags from config, default to empty list if not specified
             tags = OmegaConf.select(self.cfg, "wandb.tags", default=[])
+            self.logger_wandb.experiment.tags += tags
 
             self.logger_wandb.experiment.config.update(
                 {
@@ -425,7 +426,6 @@ class TrainingSession:
                     "data_config": OmegaConf.to_container(self.cfg.data, resolve=True),
                     "model_config": OmegaConf.to_container(self.cfg.model, resolve=True),
                     "optimizer_config": OmegaConf.to_container(self.cfg.optimizer, resolve=True),
-                    "tags": tags,
                 }
             )
             self.run_name = self.logger_wandb.experiment.name or "debug"

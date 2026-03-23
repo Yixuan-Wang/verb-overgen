@@ -1,6 +1,6 @@
 #!/usr/bin/env -S uv run --no-project --script
 #SBATCH --account=aip-fredashi
-#SBATCH --job-name=extended-target-verb
+#SBATCH --job-name=extended-matrix-verb
 #SBATCH --cpus-per-task=8
 #SBATCH --gres=gpu:l40s:1
 #SBATCH --mem=64G
@@ -67,6 +67,7 @@ def main():
     sh.uv(
         "run", "-m", "verb_overgen.train.train",
         "trainer.max_epochs=10",
+        "wandb.tags=['260323']",
         f"seed={seed}",
         f"data.train.shuffle_seed={shuffle_seed}",
         f"data.train.subset_seed={subset_seed}",
