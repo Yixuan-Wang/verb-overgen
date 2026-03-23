@@ -157,11 +157,11 @@ class TestOvergenOnceCallback(ptl.Callback):
         self.test_dir: Path
         self.test_dataset: pl.DataFrame
 
-    def _ensure_dir(self, trainer: ptl.Trainer) -> None:
-        self.test_dir = ensure_dir(Path(trainer.default_root_dir) / "test")
+    # def _ensure_dir(self, trainer: ptl.Trainer) -> None:
+    #     self.test_dir = ensure_dir(Path(trainer.default_root_dir) / "test")
 
     def on_test_start(self, trainer: ptl.Trainer, pl_module: ptl.LightningModule) -> None:
-        self._ensure_dir(trainer)
+        # self._ensure_dir(trainer)
         self.test_outputs.clear()
 
     def on_test_batch_end(
