@@ -194,7 +194,58 @@ def _(Parse):
             for l in target_children.values()
         )
 
-    return (comp_children,)
+    def has_patient(
+        parse: Parse,
+        *,
+        target: str,
+    ) -> bool:
+        """Return True if any occurrence of target has COMP children AND
+        (OBJ children XOR its COMP children have SUBJ children).
+
+        The XOR condition captures two causative patterns:
+        - transitive: 'make him cry'    — OBJ child of target, no SUBJ on COMP child
+        - ECM:        'make him see it' — causee parsed as SUBJ of COMP child, no OBJ on target
+        """
+        list_word, list_arc, list_rel = parse["word"], parse["arc"], parse["rel"]
+
+        if target not in list_word:
+            return False
+
+        for index1, word in enumerate(list_word, 1):
+            if word != target:
+                continue
+
+            children = [
+                (j + 1, rel)
+                for j, (arc, rel) in enumerate(zip(list_arc, list_rel))
+                if arc == index1
+            ]
+
+            comp_child_index1s = [
+                child_index1
+                for child_index1, rel in children
+                if rel == "COMP"
+                and not any(
+                    arc == child_index1 and rel_gc == "INF"
+                    for arc, rel_gc in zip(list_arc, list_rel)
+                )
+            ]
+            if not comp_child_index1s:
+                continue
+
+            target_has_obj = any(rel == "OBJ" for _, rel in children)
+            comp_has_subj = any(
+                arc == child_index1 and rel == "SUBJ"
+                for child_index1 in comp_child_index1s
+                for arc, rel in zip(list_arc, list_rel)
+            )
+
+            if target_has_obj ^ comp_has_subj:
+                return True
+
+        return False
+
+    return comp_children, has_patient
 
 
 @app.cell
@@ -262,7 +313,7 @@ def func_has_subj_in_parent(Parse):
 
 
 @app.cell
-def _(comp_children, expr_parse, has_subj_in_parent, partial, pl):
+def _(comp_children, expr_parse, has_patient, has_subj_in_parent, partial, pl):
     PERIPHERAL_VERB = "let"
 
     MAP_RULE = {
@@ -272,7 +323,7 @@ def _(comp_children, expr_parse, has_subj_in_parent, partial, pl):
         "rule_not_imp_let_us": ~pl.col("content_raw").str.contains(
             r"\b[Ll]et's\b"
         ),
-        "rule_not_let_go": ~pl.col("content_raw").str.contains(r"\b[Ll]et go\b"),
+        "rule_not_let_go": ~pl.col("sentence").str.contains(r"\blet go\b"),
         "rule_has_comp_children": expr_parse.map_elements(
             partial(comp_children, target=PERIPHERAL_VERB),
             pl.List(pl.String),
@@ -280,6 +331,10 @@ def _(comp_children, expr_parse, has_subj_in_parent, partial, pl):
         > 0,
         "rule_has_let_subj": expr_parse.map_elements(
             partial(has_subj_in_parent, target=PERIPHERAL_VERB),
+            pl.Boolean,
+        ),
+        "rule_has_patient": expr_parse.map_elements(
+            partial(has_patient, target=PERIPHERAL_VERB),
             pl.Boolean,
         ),
         # "rule_has_subj": expr_parse.pipe(has_subj_somewhere_before, target=PERIPHERAL_VERB)
@@ -294,7 +349,8 @@ def _():
     }
 
     SET_RULE_SPURIOUS = set([
-        "rule_has_let_subj",
+        "rule_has_let_subj"
+        # "rule_has_let_subj",
     ])
     return SET_RULE_CONFIDENT, SET_RULE_SPURIOUS
 
@@ -350,7 +406,8 @@ def _(
             pl.col(MAP_RULE.keys() - SET_RULE_CONFIDENT - SET_RULE_SPURIOUS)
         ),
         ~pl.col("rule_has_let_subj"),
-        pl.col("sentence").str.contains("go to let"),
+        # ~pl.col("rule_has_patient"),
+        # pl.col("sentence").str.count_matches(r"\blet\b").gt(1),
     ).select(*EXPR_CORE_COLUMN)
 
     _df = (
@@ -372,6 +429,15 @@ def _(
 
 
 @app.cell
+def _(pl, table_annotated):
+    table_annotated.value.select(
+        pl.selectors.starts_with("id"),
+        pl.col("content_raw")
+    )#.write_csv("this.csv")
+    return
+
+
+@app.cell
 def _(dataset_annotated_filtered, pl, table_annotated):
     _df = table_annotated.value
     _df_n = dataset_annotated_filtered.join(table_annotated.value, on=["id_file", "id_utterance"], how="anti")
@@ -379,12 +445,12 @@ def _(dataset_annotated_filtered, pl, table_annotated):
     df_let_addendum = _df.select(pl.selectors.starts_with("id"), pl.lit(True).alias("rule_is"))
 
     df_let_addendum
-    return (df_let_addendum,)
+    return
 
 
 @app.cell
-def _(df_let_addendum):
-    df_let_addendum.write_csv("./var/pychildes/rules/causative_let_addendum.csv")
+def _():
+    # df_let_addendum.write_csv("./var/pychildes/rules/causative_let_addendum.csv")
     return
 
 
@@ -469,6 +535,14 @@ def locate_false_negative(
 @app.cell
 def _(dataset_negative, pl):
     dataset_negative.filter(pl.col("sentence").str.contains("be go to let"))
+    return
+
+
+@app.cell
+def _(dataset, pl):
+    dataset.head(10000).filter(
+        pl.col("morph").struct["lemma"].list.contains("have")
+    )
     return
 
 
