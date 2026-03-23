@@ -1,6 +1,6 @@
-from typing import cast
 import itertools
 from functools import partial
+from typing import cast
 
 import polars as pl
 from typing_extensions import deprecated
@@ -38,18 +38,18 @@ def comp_children_index(
     target: str,
 ) -> list[int]:
     """Extract the COMP children index of the given target verb.
-    
+
     Warning:
         The returned index is 0-indexed, which is different from the 1-indexed arc in the parse.
     """
     list_word, list_arc, list_rel = parse["word"], parse["arc"], parse["rel"]
-    
+
     if target not in list_word:
         return []
-    
+
     if "COMP" not in list_rel:
         return []
-    
+
     return [
         index0_child
         for index1_parent, word_parent in enumerate(list_word, 1)
@@ -88,7 +88,12 @@ def has_subj_in_parent(
                 return True
 
             # Otherwise check its `COMP`-parent, or set to 0
-            index1 = list_arc[index1 - 1] if list_rel[index1 - 1] == "COMP" else 0
+            index0 = index1 - 1
+            index1 = (
+                list_arc[index0]
+                if (list_rel[index0] == "COMP" or list_rel[index0] == "COORD" or list_rel[index0] == "CONJ")
+                else 0
+            )
 
     return False
 
@@ -160,6 +165,79 @@ def has_comp_children_and_patient(
             for arc, rel in zip(list_arc, list_rel)
         )
 
+        if comp_has_subj:
+            comp_has_invalid_subj = any(
+                arc == child_index1 and rel == "SUBJ"
+                and (word == "something" or word == "anything")
+                for child_index1 in comp_child_index1s
+                for word, arc, rel in zip(list_word, list_arc, list_rel)
+            )
+            if comp_has_invalid_subj:
+                return False
+
+        if target_has_obj ^ comp_has_subj:
+            return True
+
+    return False
+
+
+def has_comp_inf_children_and_patient(
+    parse: Parse,
+    *,
+    target: str,
+) -> bool:
+    """Return True if any occurrence of target has COMP children with an INF grandchild AND
+    (OBJ children XOR its COMP children have SUBJ children).
+    
+    This is for `get`, `force` and `allow`, etc, where a to-supported infinitive is enforced.
+    
+    Subjects that are indefinite pronouns ("something", "anything") are rejected
+    to avoid false positives like "get something to eat".
+    """
+    list_word, list_arc, list_rel = parse["word"], parse["arc"], parse["rel"]
+
+    if target not in list_word:
+        return False
+
+    for index1, word in enumerate(list_word, 1):
+        if word != target:
+            continue
+
+        children = [
+            (j + 1, rel)
+            for j, (arc, rel) in enumerate(zip(list_arc, list_rel))
+            if arc == index1
+        ]
+
+        comp_child_index1s = [
+            child_index1
+            for child_index1, rel in children
+            if rel == "COMP"
+            and any(
+                arc == child_index1 and rel_gc == "INF"
+                for arc, rel_gc in zip(list_arc, list_rel)
+            )
+        ]
+        if not comp_child_index1s:
+            continue
+
+        target_has_obj = any(rel == "OBJ" for _, rel in children)
+        comp_has_subj = any(
+            arc == child_index1 and rel == "SUBJ"
+            for child_index1 in comp_child_index1s
+            for arc, rel in zip(list_arc, list_rel)
+        )
+
+        if comp_has_subj:
+            comp_has_invalid_subj = any(
+                arc == child_index1 and rel == "SUBJ"
+                and (word == "something" or word == "anything")
+                for child_index1 in comp_child_index1s
+                for word, arc, rel in zip(list_word, list_arc, list_rel)
+            )
+            if comp_has_invalid_subj:
+                return False
+
         if target_has_obj ^ comp_has_subj:
             return True
 
@@ -168,10 +246,10 @@ def has_comp_children_and_patient(
 class MixinRuleFind:
     PERIPHERAL_VERB: str
     """The peripheral verb to look for."""
-    
+
     MAP_RULE_PREFILTER: dict[str, pl.Expr]
     """Pre-filter rules to narrow down candidate sentences."""
-    
+
     MAP_RULE_OVERRIDE: dict[str, pl.Expr]
     """Override rules to directly label sentences as True/False. Unspecified sentences will use heuristic rules to decide."""
 
@@ -271,4 +349,80 @@ class RuleMake(MixinRuleFind):
         #     partial(has_subj_in_parent, target=PERIPHERAL_VERB),
         #     pl.Boolean,
         # ),
+    }
+
+class RuleHave(MixinRuleFind):
+    PERIPHERAL_VERB = "have"
+
+    try:
+        DF_ADDENDUM = pl.read_csv("./data/pychildes/rules/causative_have_addendum.csv")
+    except Exception:
+        raise ValueError("Failed to load `have` addendum rules")
+
+    MAP_RULE_PREFILTER = {
+        # The sentence should contain "have" lemma.
+        "rule_has_have": (pl.col("morph").struct.field("lemma").list.contains(item=PERIPHERAL_VERB))
+    }
+
+    MAP_RULE_OVERRIDE = {
+        "rule_addendum": pl.struct("id_file", "id_utterance").replace_strict(
+            old=DF_ADDENDUM.select(pl.struct("id_file", "id_utterance")).to_series(),
+            new=DF_ADDENDUM["rule_is"],
+            default=pl.lit(False), # If not in addendum, treat it as non-causative.
+            return_dtype=pl.Boolean,
+        )
+    }
+
+    MAP_RULE_HEURISTIC = {
+        # If not in addendum, treat it as non-causative.
+        # This will be unreachable since the override rule will assign False to all sentences not in addendum, but we keep it here for clarity.
+        "rule_false": pl.lit(False)
+    }
+
+class RuleGet(MixinRuleFind):
+    PERIPHERAL_VERB = "get"
+
+    MAP_RULE_PREFILTER = {
+        "rule_has_get": (pl.col("morph").struct.field("lemma").list.contains(item=PERIPHERAL_VERB))
+    }
+    MAP_RULE_OVERRIDE = {}
+    MAP_RULE_HEURISTIC = {
+        "rule_has_comp_inf_children_and_patient": (
+            EXPR_PARSE.map_elements(
+                partial(has_comp_inf_children_and_patient, target=PERIPHERAL_VERB),
+                pl.Boolean,
+            )
+        ),
+    }
+
+class RuleCause(MixinRuleFind):
+    PERIPHERAL_VERB = "cause"
+
+    MAP_RULE_PREFILTER = {
+        "rule_has_cause": (pl.col("morph").struct.field("lemma").list.contains(item=PERIPHERAL_VERB))
+    }
+    MAP_RULE_OVERRIDE = {}
+    MAP_RULE_HEURISTIC = {
+        "rule_has_comp_inf_children_and_patient": (
+            EXPR_PARSE.map_elements(
+                partial(has_comp_inf_children_and_patient, target=PERIPHERAL_VERB),
+                pl.Boolean,
+            )
+        ),
+    }
+
+class RuleForce(MixinRuleFind):
+    PERIPHERAL_VERB = "force"
+
+    MAP_RULE_PREFILTER = {
+        "rule_has_force": (pl.col("morph").struct.field("lemma").list.contains(item=PERIPHERAL_VERB))
+    }
+    MAP_RULE_OVERRIDE = {}
+    MAP_RULE_HEURISTIC = {
+        "rule_has_comp_inf_children_and_patient": (
+            EXPR_PARSE.map_elements(
+                partial(has_comp_inf_children_and_patient, target=PERIPHERAL_VERB),
+                pl.Boolean,
+            )
+        ),
     }

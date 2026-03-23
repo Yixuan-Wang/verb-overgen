@@ -2,14 +2,13 @@
 import json
 import time
 from pathlib import Path
-from typing import TypedDict
+from typing import TypedDict, Final
 
 import polars as pl
 
+import verb_overgen.prep.lib.pychildes_rule_causative as pychildes_rule_causative
 from verb_overgen.common.features import FEATURE_CAUSATIVE, FEATURE_CAUSATIVE_ENTRENCHED
 from verb_overgen.prep.lib.lexical import LIST_CAUSATIVE_VERBS, LIST_EXTENDED_CAUSATIVE_VERBS
-from verb_overgen.prep.lib.pattern_matching import extract_periphrastic_verb
-from verb_overgen.prep.lib.pychildes_rule_causative import MixinRuleFind, RuleLet, RuleMake
 from verb_overgen.prep.lib.syntactic import Parse
 
 
@@ -35,11 +34,15 @@ def load_data(file_path: str) -> tuple[pl.LazyFrame, bool]:
     return dataset, has_changed
 
 
-MAP_PERIPHERAL_RULES: dict[str, type[MixinRuleFind]] = { rule.PERIPHERAL_VERB: rule for rule in [RuleLet, RuleMake] }
+MAP_PERIPHERAL_RULES: dict[str, type[pychildes_rule_causative.MixinRuleFind]] = {
+    rule.PERIPHERAL_VERB: rule
+    for class_name, rule in vars(pychildes_rule_causative).items()
+    if class_name.startswith("Rule") and issubclass(rule, pychildes_rule_causative.MixinRuleFind)
+}
 
-set_base_causative_verbs = set(LIST_CAUSATIVE_VERBS)
-set_extended_causative_verbs = set(LIST_EXTENDED_CAUSATIVE_VERBS())
-set_all_causative_verbs = set_base_causative_verbs.union(set_extended_causative_verbs)
+SET_BASE_CAUSATIVE_VERBS: Final[set[str]] = set(LIST_CAUSATIVE_VERBS)
+SET_EXTENDED_CAUSATIVE_VERBS: Final[set[str]] = set(LIST_EXTENDED_CAUSATIVE_VERBS())
+SET_ALL_CAUSATIVE_VERBS: Final[set[str]] = SET_BASE_CAUSATIVE_VERBS.union(SET_EXTENDED_CAUSATIVE_VERBS)
 
 
 class Features(TypedDict):
@@ -73,7 +76,7 @@ def build_causative_features(row) -> Features:
         list_this_causative_verbs = [
             word
             for index in list_extracted_index
-            if (word := list_word[index]) in set_all_causative_verbs
+            if (word := list_word[index]) in SET_ALL_CAUSATIVE_VERBS
         ]
         if list_this_causative_verbs:
             features.add(FEATURE_CAUSATIVE)
@@ -86,19 +89,19 @@ def build_causative_features(row) -> Features:
                     "extra": json.dumps(
                         {
                             "support_verb": support_verb,
-                            "is_base": verb in set_base_causative_verbs,
+                            "is_base": verb in SET_BASE_CAUSATIVE_VERBS,
                         }
                     ),
                 }
             )
-            
-    
+
+
 
     # set_entrenched_causative_verbs = set(parse["word"]) & set_all_causative_verbs - set_featured_causative_verbs
     list_entrenched_causative_verbs = [
         word
         for pos, word in zip(list_pos, list_word)
-        if (word in set_all_causative_verbs and pos in {"v", "part"}) and word not in set_featured_causative_verbs
+        if (word in SET_ALL_CAUSATIVE_VERBS and pos in {"v", "part"}) and word not in set_featured_causative_verbs
     ]
     if list_entrenched_causative_verbs:
         features.add(FEATURE_CAUSATIVE_ENTRENCHED)
@@ -110,7 +113,7 @@ def build_causative_features(row) -> Features:
                 "extra": json.dumps(
                     {
                         "support_verb": None,
-                        "is_base": verb in set_base_causative_verbs,
+                        "is_base": verb in SET_BASE_CAUSATIVE_VERBS,
                     }
                 ),
             }
@@ -172,7 +175,7 @@ def annotate_causative(dataset: pl.LazyFrame) -> pl.LazyFrame:
 
 def main():
     dataset, has_changed = load_data("./data/pychildes/pychildes-morphosyntax-tokenized.20251024.parquet")
-    OUTPUT_PATH = "./var/pychildes/debug-annotation/pychildes-morphosyntax_annotation_make-let_20260319.20251024.parquet"
+    OUTPUT_PATH = "./var/pychildes/debug-annotation/pychildes-morphosyntax_annotation_20260321.20251024.parquet"
 
     if Path(OUTPUT_PATH).exists():
         print(f"Output file {OUTPUT_PATH} already exists. Please remove it before running the script.")
