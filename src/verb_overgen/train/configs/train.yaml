@@ -45,5 +45,6 @@ data:
     # path: "./data/scamp/scamp-postprocessed-tokenized.20260101.parquet"
     # batch_size: 512
   eval_overgen:
+    # TODO: Switch to new testset
     path: "./data/testset/output/testset_llm_gen.final_postprocessed_20260114T1637.parquet"
     batch_size: 512

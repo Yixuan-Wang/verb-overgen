@@ -22,6 +22,7 @@ from datetime import datetime
 import numpy as np
 import sh
 
+raise NotImplementedError("Change the default overgen testset first before running training script again.")
 
 SUBSETS = [
     "data.train.subset=full",
