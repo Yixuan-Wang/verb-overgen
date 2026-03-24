@@ -323,12 +323,13 @@ class TrainingSession:
         randgen_train_shuffling = torch.Generator()
         if (seed_train_shuffling := OmegaConf.select(self.cfg, "data.train.shuffle_seed", default=None)) is not None:
             randgen_train_shuffling.manual_seed(seed_train_shuffling)
-        else: 
-            self.logger_wandb.experiment.config.update(
-                {
-                    "train_shuffle_seed": randgen_train_shuffling.initial_seed(),
-                }
-            )
+        else:
+           if hasattr(self, "logger_wandb") and self.logger_wandb.experiment:
+                self.logger_wandb.experiment.config.update(
+                    {
+                        "train_shuffle_seed": randgen_train_shuffling.initial_seed(),
+                    }
+                )
 
         self.dataloader_train = torch.utils.data.DataLoader(
             self.dataset_train,

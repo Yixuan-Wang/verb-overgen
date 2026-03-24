@@ -54,8 +54,8 @@ def run_testset_on_checkpoint(
 
 @__import__("ipdb").iex
 def main():
-    sweep_filters = {"tags": {"$in": ["260226"]}}
-    path_result = "./var/results/testset_gemini_voi-5_tag-260226.parquet"
+    sweep_filters = {"tags": {"$in": ["260323"]}}
+    path_result = "./var/results/testset_gemini_voi-5_tag-260323.parquet"
     
     from verb_overgen.train.lib.utils import load_train_config
     config = load_train_config()
