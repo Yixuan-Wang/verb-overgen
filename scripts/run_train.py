@@ -1,11 +1,12 @@
 #!/usr/bin/env -S uv run --no-project --script
 #SBATCH --account=aip-fredashi
-#SBATCH --job-name=extended-matrix-verb
+#SBATCH --job-name=effect-cry
 #SBATCH --cpus-per-task=8
 #SBATCH --gres=gpu:l40s:1
 #SBATCH --mem=64G
-#SBATCH --array=0-14
-#SBATCH --time=5:00:00
+#SBATCH --array=0-5
+#SBATCH --time=3:00:00
+#SBATCH --exclude=kn107
 #SBATCH -o logs/slurm/slurm-%A_%a_%x.out.txt
 #SBATCH -e logs/slurm/slurm-%A_%a_%x.err.txt
 
@@ -22,18 +23,18 @@ from datetime import datetime
 import numpy as np
 import sh
 
-raise NotImplementedError("Change the default overgen testset first before running training script again.")
+# raise NotImplementedError("Change the default overgen testset first before running training script again.")
 
 SUBSETS = [
-    "data.train.subset=full",
-    "data.train.subset=remove_preemption",
-    "data.train.subset=remove_entrenchment",
+    # "data.train.subset=full",
+    "data.train.subset=remove_preemption_on_verb",
+    "data.train.subset=remove_entrenchment_on_verb",
 ]
 
-# 5 seed triples (seed, shuffle_seed, subset_seed), each in range(0, 1024)
+# 3 seed triples (seed, shuffle_seed, subset_seed), each in range(0, 1024)
 _rng = np.random.default_rng(42)
 SEEDS: list[tuple[int, int, int]] = [
-    tuple(row) for row in _rng.integers(0, 1024, size=(5, 3)).tolist()
+    tuple(row) for row in _rng.integers(0, 1024, size=(3, 3)).tolist()
 ]
 
 
@@ -67,12 +68,14 @@ def main():
 
     sh.uv(
         "run", "-m", "verb_overgen.train.train",
-        "trainer.max_epochs=10",
-        "wandb.tags=['260323']",
+        "trainer.max_epochs=3",
+        "wandb.tags=['260325-cry']",
         f"seed={seed}",
+        # "data.train.path_annotation=./data/pychildes/pychildes-morphosyntax_annotation-20260225.20251024.parquet",
         f"data.train.shuffle_seed={shuffle_seed}",
         f"data.train.subset_seed={subset_seed}",
         subset,
+        "data.train.subset_verb_of_interest=cry",
         _fg=True,
     )
 
