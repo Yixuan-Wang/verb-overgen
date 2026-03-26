@@ -25,7 +25,7 @@ from verb_overgen.common.tokenize import BOS_TOKEN, PAD_TOKEN
 
 # from verb_overgen.train.lib.dataloader_scamp import DatasetScamp, EvalScampCallback
 from verb_overgen.train.lib.dataloader_overgen import DatasetOvergen, EvalOvergenCallback, EvalOvergenMonitor
-from verb_overgen.train.lib.dataloader_pychildes import DataBatchPyChildes, DatasetPyChildes, TrainTokenMonitor, remove_entrenchment, remove_preemption, remove_token
+from verb_overgen.train.lib.dataloader_pychildes import DataBatchPyChildes, DatasetPyChildes, TrainTokenMonitor, remove_entrenchment, remove_entrenchment_on_verb, remove_preemption, remove_preemption_on_verb, remove_token
 from verb_overgen.train.lib.utils import CacheCleanCallback
 from verb_overgen.train.lib.validate import eval_input_token_prob, VERB_TARGET_5
 from verb_overgen.util.misc_util import ensure_dir
@@ -280,6 +280,15 @@ class TrainingSession:
                     randgen.manual_seed(subset_seed)
 
                 remove_entrenchment(self.dataset_train, randgen=randgen)
+            case "remove_preemption_on_verb":
+                subset_verb = self.cfg.data.train.subset_verb_of_interest
+                remove_preemption_on_verb(self.dataset_train, verb=subset_verb)
+            case "remove_entrenchment_on_verb":
+                subset_verb = self.cfg.data.train.subset_verb_of_interest
+                randgen = torch.Generator()
+                if (subset_seed := OmegaConf.select(self.cfg, "data.train.subset_seed", default=None)) is not None:
+                    randgen.manual_seed(subset_seed)
+                remove_entrenchment_on_verb(self.dataset_train, verb=subset_verb, randgen=randgen)
             case "remove_token_make":
                 _sample_frac = OmegaConf.select(self.cfg, "data.train.subset_frac", default=1.)
                 remove_token(self.dataset_train, token_id=self.tokenizer._tokenizer.token_to_id("make"), sample_frac=_sample_frac)
@@ -323,12 +332,13 @@ class TrainingSession:
         randgen_train_shuffling = torch.Generator()
         if (seed_train_shuffling := OmegaConf.select(self.cfg, "data.train.shuffle_seed", default=None)) is not None:
             randgen_train_shuffling.manual_seed(seed_train_shuffling)
-        else: 
-            self.logger_wandb.experiment.config.update(
-                {
-                    "train_shuffle_seed": randgen_train_shuffling.initial_seed(),
-                }
-            )
+        else:
+           if hasattr(self, "logger_wandb") and self.logger_wandb.experiment:
+                self.logger_wandb.experiment.config.update(
+                    {
+                        "train_shuffle_seed": randgen_train_shuffling.initial_seed(),
+                    }
+                )
 
         self.dataloader_train = torch.utils.data.DataLoader(
             self.dataset_train,
@@ -418,6 +428,7 @@ class TrainingSession:
         if self.logger_wandb.experiment:
             # Get tags from config, default to empty list if not specified
             tags = OmegaConf.select(self.cfg, "wandb.tags", default=[])
+            self.logger_wandb.experiment.tags += tags
 
             self.logger_wandb.experiment.config.update(
                 {
@@ -425,7 +436,6 @@ class TrainingSession:
                     "data_config": OmegaConf.to_container(self.cfg.data, resolve=True),
                     "model_config": OmegaConf.to_container(self.cfg.model, resolve=True),
                     "optimizer_config": OmegaConf.to_container(self.cfg.optimizer, resolve=True),
-                    "tags": tags,
                 }
             )
             self.run_name = self.logger_wandb.experiment.name or "debug"

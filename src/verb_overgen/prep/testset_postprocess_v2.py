@@ -63,7 +63,16 @@ if __name__ == "__main__":
         value_name="sentence",
     )
 
+    dataset_long = dataset_long.with_row_index("index_sentence")
+
     dataset_roberta = dataset_long.pipe(lambda df: cast(pl.DataFrame, pl.from_arrow(SpacyParser()(df.to_arrow()))))
+
+    # * How to pivot back
+    # dataset_roberta.pipe(lambda df: df.pivot(
+    #     on="kind",
+    #     values=pl.selectors.by_index(range(df.get_column_index("kind") + 1, df.width)),
+    #     index=pl.selectors.by_index(range(0, df.get_column_index("kind")))
+    # ))
 
     import tokenizers as hftk
     tokenizer_file = "./data/tokenizer/1024-wordlevel/tokenizer.json"

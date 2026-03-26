@@ -17,9 +17,7 @@ wandb:
   project: "25-verb-overgen"
   log_model: false
   save_dir: "./logs/wandb"
-  tags:
-    - packing
-    - full
+  tags: []
 
 tokenizer: "./data/tokenizer/1024-wordlevel/tokenizer.json"
 
@@ -35,7 +33,7 @@ trace:
 data:
   train:
     path: "./data/pychildes/pychildes-morphosyntax-tokenized.20251024.parquet"
-    path_annotation: "./data/pychildes/pychildes-morphosyntax_annotation-20260225.20251024.parquet"
+    path_annotation: "./data/pychildes/pychildes-morphosyntax_annotation-20260321.20251024.parquet"
     # batch_size: 256
     shuffle: true
     shuffle_seed: null
@@ -43,9 +41,11 @@ data:
     
     subset: full
     subset_seed: null
+    subset_verb_of_interest: "laugh"
   # val:
     # path: "./data/scamp/scamp-postprocessed-tokenized.20260101.parquet"
     # batch_size: 512
   eval_overgen:
+    # TODO: Switch to new testset
     path: "./data/testset/output/testset_llm_gen.final_postprocessed_20260114T1637.parquet"
     batch_size: 512

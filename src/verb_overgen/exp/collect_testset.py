@@ -79,11 +79,34 @@ def collect(sweep_filters) -> pl.DataFrame:
 
 
 def main() -> None:
-    sweep_filters = {"tags": {"$in": ["260226"]}}
+    import argparse
+    from datetime import datetime
+
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("tags", nargs="+", help="WandB tags to filter runs by (matched with $in)")
+    parser.add_argument(
+        "-o", "--output",
+        default=None,
+        help="Output parquet path (default: ./data/exp/overgen_results-raw-<tags>-<timestamp>.parquet)",
+    )
+    args = parser.parse_args()
+
+    sweep_filters = {"tags": {"$in": args.tags}}
+
+    if args.output is None:
+        tags_str = "_".join(args.tags)
+        timestamp = datetime.now().strftime("%y%m%dT%H%M")
+        output_file = f"./data/exp/overgen_results-raw-{tags_str}-{timestamp}.parquet"
+    else:
+        output_file = args.output
+
+    if Path(output_file).exists():
+        raise FileExistsError(f"Output file already exists: {output_file}")
+
     logger.info(f"Collecting test results for runs with filters: {sweep_filters}")
     dataset = collect(sweep_filters)
-    
-    output_file = "./data/exp/overgen_results_raw_260226.parquet"
+
+    Path(output_file).parent.mkdir(parents=True, exist_ok=True)
     dataset.write_parquet(output_file)
     logger.success(f"Test results collected and saved to {output_file}")
 

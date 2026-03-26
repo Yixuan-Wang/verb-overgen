@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from collections import Counter
-from collections.abc import Generator, Sequence
+from collections.abc import Generator, Sequence, Iterable
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import NotRequired, TypedDict, cast
@@ -79,19 +79,18 @@ class DatasetPyChildes(Dataset[DataOnePyChildes]):
 
     @classmethod
     def _load_data(cls, input_path_main: Path, input_path_annotation: Path, *, max_len: int):
-        df_main = pl.read_parquet(input_path_main)
-        df_annotation = pl.read_parquet(input_path_annotation)
-
-        num_rows = len(df_main)
+        lf_main = pl.scan_parquet(input_path_main)
+        lf_annotation = pl.scan_parquet(input_path_annotation)
 
         logger.info("Joining main dataset and annotation dataset.")
-        # df = df_main.join(df_annotation, on=["id_file", "id_utterance"], validate="1:1", coalesce=True)
-        assert num_rows == len(df_annotation), "The main dataset and annotation dataset must have the same number of rows."
-        assert df_main[0, "id_file"] == df_annotation[0, "id_file"] and df_main[0, "id_utterance"] == df_annotation[0, "id_utterance"], "The main dataset and annotation dataset must be aligned in the same order."
-        assert df_main[num_rows - 1, "id_file"] == df_annotation[num_rows - 1, "id_file"] and df_main[num_rows - 1, "id_utterance"] == df_annotation[num_rows - 1, "id_utterance"], "The main dataset and annotation dataset must be aligned in the same order."
-        df = df_main.with_columns(
-            df_annotation["features"],
-            df_annotation["featured_verbs"],
+        df = (
+            lf_main
+            .join(lf_annotation, on=["id_file", "id_utterance"], how="left", coalesce=True, maintain_order="left")
+            .with_columns(
+                pl.col("features").fill_null([]),
+                pl.col("featured_verbs").fill_null([]),
+            )
+            .collect()
         )
 
         logger.info("Processing dataset for training.")
@@ -343,6 +342,20 @@ def remove_preemption(dataset: DatasetPyChildes):
         pl.col("features").list.contains(FEATURE_CAUSATIVE)
     )
     dataset.index_should_remove.update(df_filter["index"])
+    
+def remove_preemption_on_verb(dataset: DatasetPyChildes, *, verb: str | Iterable[str]):
+    if isinstance(verb, str):
+        expr_filter_verb = pl.element().struct["verb"].eq(verb)
+    else:
+        expr_filter_verb = pl.element().struct["verb"].is_in(list(verb))
+    
+    df_filter = dataset.dataframe.filter(
+        pl.col("featured_verbs").list.eval(
+            pl.element().struct["feature"].eq(FEATURE_CAUSATIVE)
+            & expr_filter_verb
+        ).list.any()
+    )
+    dataset.index_should_remove.update(df_filter["index"])
 
 def remove_entrenchment(dataset: DatasetPyChildes, *, randgen: torch.Generator | None):
     """
@@ -359,6 +372,55 @@ def remove_entrenchment(dataset: DatasetPyChildes, *, randgen: torch.Generator |
         .select("featured_verbs")
         .explode("featured_verbs")
         .filter(pl.col("featured_verbs").struct["feature"] == FEATURE_CAUSATIVE)
+        .select(
+            pl.col("featured_verbs").struct["verb"].value_counts().struct.unnest()
+        )
+    )
+
+    for verb, count in zip(df_causative_count["verb"], df_causative_count["count"]):
+        seed = torch.randint(0, 1_000_000, (1,)).item() if randgen else None
+        df_entrenched = dataset.dataframe.filter(
+            pl.col("featured_verbs").list.eval(
+                pl.element().struct["feature"].eq(FEATURE_CAUSATIVE_ENTRENCHED) & pl.element().struct["verb"].eq(verb)
+            ).list.any(),
+        )
+        if len(df_entrenched) < count:
+            logger.warning(f"Not enough entrenched (but not preemptive) samples for verb '{verb}' to match the count of preemptive samples. Requested {count}, but only {len(df_entrenched)} available. ")
+            continue
+
+        df_sample = df_entrenched.sample(count, seed=seed)
+        dataset.index_should_remove.update(df_sample["index"])
+
+def remove_entrenchment_on_verb(dataset: DatasetPyChildes, *, verb: str | Iterable[str], randgen: torch.Generator | None):
+    """
+    Warning:
+        This actually removes non-preemption entrenchment samples.
+
+    Usage:
+        ```python
+        remove_entrenchment_on_verb(dataset, verb="laugh", randgen=torch.Generator().manual_seed(42))
+        ```
+    """
+    if isinstance(verb, str):
+        expr_filter_verb = pl.element().struct["verb"].eq(verb)
+    else:
+        expr_filter_verb = pl.element().struct["verb"].is_in(list(verb))
+    
+    df_causative = dataset.dataframe.filter(
+        pl.col("featured_verbs").list.eval(
+            pl.element().struct["feature"].eq(FEATURE_CAUSATIVE)
+            & expr_filter_verb
+        ).list.any()
+    )
+    
+    df_causative_count = (
+        df_causative.select(
+            pl.col("featured_verbs").list.filter(
+                pl.element().struct["feature"].eq(FEATURE_CAUSATIVE)
+                & expr_filter_verb
+            )
+        )
+        .explode("featured_verbs")
         .select(
             pl.col("featured_verbs").struct["verb"].value_counts().struct.unnest()
         )

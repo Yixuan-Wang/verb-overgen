@@ -9,6 +9,7 @@ from functools import partial
 from typing import TypedDict
 
 import polars as pl
+from typing_extensions import deprecated
 
 from verb_overgen.prep.lib.syntactic import Parse
 
@@ -182,7 +183,7 @@ def extract_periphrastic_causative(
     word_comp_children = word.list.gather(indices_make_children_comp)
     return word_comp_children
 
-
+@deprecated("This function cannot handle the complexity of verbs beyond `make`. See `Rule*` classes in `prep.lib.pychildes_rule_causative` for finer-grained rules.")
 def extract_periphrastic_verb(
     parse: Parse,
     *,
@@ -227,6 +228,7 @@ def extract_periphrastic_verb(
     word_target = [word[i] for l in indices_target for i in l]
     return word_target
 
+@deprecated("See `prep.lib.pychildes_rule_causative.RuleMake` for finer-grained rules.")
 def extract_periphrastic_make(
     parse: pl.Expr
 ) -> pl.Expr:
