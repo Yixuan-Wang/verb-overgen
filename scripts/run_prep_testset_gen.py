@@ -49,7 +49,7 @@ def main():
     sh.uv(
         "run", "-m", "verb_overgen.prep.testset_gen",
         "--backend", "gemini",
-        "--output", f"./var/testset/overgen-gemini-voi_12-{time_now}.parquet",
+        "--output", f"./var/testset/overgen-gemini-voi_extension_0326-{time_now}.parquet",
         _fg=True,
     )
 

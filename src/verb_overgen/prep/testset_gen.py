@@ -244,8 +244,9 @@ if __name__ == "__main__":
     object_weights = np.concatenate([names_weights, nouns_weights])
 
     all_results: list[dict] = []
-    _set_verb_target_5 = set(VERB_TARGET_5)
-    verbs = [v for v in VERB_TARGET_17 if v not in _set_verb_target_5]  # FIXME: change to VERB_TARGET_17 sans VERB_TARGET_5
+    # _set_verb_target_5 = set(VERB_TARGET_5)
+    # verbs = [v for v in VERB_TARGET_17 if v not in _set_verb_target_5]  # FIXME: change to VERB_TARGET_17 sans VERB_TARGET_5
+    verbs = ["go", "come", "look", "stay", "talk", "listen", "cough", "blink"]
     for verb in (pbar := tqdm(verbs, desc="verbs")):
         pbar.set_postfix(verb=verb)
         subject_sampler = WeightedSampler(names_labels, names_weights, RAND_GEN)
