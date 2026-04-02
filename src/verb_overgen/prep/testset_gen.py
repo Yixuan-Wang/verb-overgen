@@ -5,12 +5,17 @@ import polars as pl
 import sglang as sgl
 from sglang.srt.parser.reasoning_parser import ReasoningParser
 from transformers import AutoTokenizer
+from loguru import logger
 
-from verb_overgen.common.features import VERB_TARGET_17, VERB_TARGET_5
+from tqdm import tqdm
+
+from verb_overgen.common.features import VERB_TARGET_5, VERB_TARGET_17
 
 MODEL_PATH = "/model-weights/Qwen3-32B"
 
-SYSTEM_PROMPT = "You are a child literature author tasked with creating engaging and easy-to-understand texts for young children."
+SYSTEM_PROMPT = (
+    "You are a child literature author tasked with creating engaging and easy-to-understand texts for young children."
+)
 PROMPT = """\
 ### Instructions
 1.  Object Selection: Choose an object from the vocabulary bank that fits naturally with the subject and verb.
@@ -43,35 +48,25 @@ The following outputs have already been generated for this verb. Prefer to creat
 ---
 """
 
-RAND_GEN = np.random.default_rng(42)
+RAND_GEN = np.random.default_rng()
 
 
-class ThompsonSampler:
-    def __init__(self, labels: list[str], alpha: np.ndarray, rng: np.random.Generator):
+class WeightedSampler:
+    def __init__(self, labels: list[str], weights: np.ndarray, rng: np.random.Generator):
         self.labels = labels
-        self.alpha = alpha.copy()
-        self.beta = np.ones_like(alpha)
         self.rng = rng
+        self.probs = weights / weights.sum()
 
     def sample(self, n: int) -> list[str]:
-        theta = self.rng.beta(self.alpha, self.beta)
-        indices = np.argsort(theta)[-n:]
+        indices = self.rng.choice(len(self.labels), size=min(n, len(self.labels)), replace=False, p=self.probs)
         return [self.labels[i] for i in indices]
-
-    def reinforce(self, selected: str, factor: float):
-        idx = self.labels.index(selected)
-        self.alpha[idx] *= factor
-
-    def discourage(self, selected: str, factor: float):
-        idx = self.labels.index(selected)
-        self.beta[idx] *= factor
 
 
 def generate_prompt(
     *,
     verb: str,
-    subject_sampler: ThompsonSampler,
-    object_sampler: ThompsonSampler,
+    subject_sampler: WeightedSampler,
+    object_sampler: WeightedSampler,
     previous_outputs: list[str],
     rng: np.random.Generator,
 ):
@@ -86,7 +81,6 @@ def generate_prompt(
             filled_previous_output = PROMPT_PREVIOUS.format("\n---\n".join(sampled))
         else:
             filled_previous_output = ""
-        
 
         prompt_filled = PROMPT.format(
             subject=subject,
@@ -102,6 +96,7 @@ def generate_prompt(
             "prompt": prompt_filled,
         }
 
+
 def get_message(sentence: str) -> list[dict[str, str]]:
     return [
         {
@@ -111,15 +106,18 @@ def get_message(sentence: str) -> list[dict[str, str]]:
         {
             "role": "user",
             "content": sentence,
-        }
+        },
     ]
 
 
-_DTYPE_PARSED_RESULTS = pl.Struct({
-    "output_reasoning": pl.String,
-    "output_text": pl.String,
-    "error": pl.String,
-})
+_DTYPE_PARSED_RESULTS = pl.Struct(
+    {
+        "output_reasoning": pl.String,
+        "output_text": pl.String,
+        "error": pl.String,
+    }
+)
+
 
 class LLMGenMock:
     def __call__(self, prompt_row: dict) -> dict:
@@ -134,6 +132,7 @@ class LLMGenGemini:
     def __init__(self, model: str = "gemini-3-flash-preview"):
         from google import genai
         from google.genai import types
+
         self.client = genai.Client()
         self.model = model
         self.types = types
@@ -193,25 +192,39 @@ class LLMGenSGL:
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument("--alpha", type=float, default=0.3, help="Power smoothing exponent for prior distribution (0=uniform, 1=unsmoothed)")
-    parser.add_argument("--prompt-per-verb", type=int, default=75)
+    parser.add_argument(
+        "--alpha",
+        type=float,
+        default=0.3,
+        help="Power smoothing exponent for prior distribution (0=uniform, 1=unsmoothed)",
+    )
+    parser.add_argument("--round-per-verb", type=int, default=75)
     parser.add_argument("--tp-size", type=int, default=2)
     parser.add_argument("--max-running-requests", type=int, default=32)
-    parser.add_argument("--backend", type=str, default="sgl", choices=["mock", "sgl", "gemini"], help="LLM backend to use")
-    parser.add_argument("--gemini-model", type=str, default="gemini-3-flash-preview", help="Gemini model name (only used with --backend gemini)")
+    parser.add_argument(
+        "--backend", type=str, default="sgl", choices=["mock", "sgl", "gemini"], help="LLM backend to use"
+    )
+    parser.add_argument(
+        "--gemini-model",
+        type=str,
+        default="gemini-3-flash-preview",
+        help="Gemini model name (only used with --backend gemini)",
+    )
     parser.add_argument("--output", type=str, required=True)
     args = parser.parse_args()
+    if not (0 <= args.alpha <= 1):
+        parser.error("--alpha must be between 0 and 1")
 
-    dataset_names = pl.read_csv("./data/testset/gen/names.csv").extend(
-        pl.read_csv("./data/testset/gen/top_pronouns.csv").rename({"count_is_pronoun": "count_is_noun"})
-    ).with_columns(
-        (pl.col("count").pow(args.alpha) / pl.col("count").pow(args.alpha).sum()).alias("proportion")
+    dataset_names = (
+        pl.read_csv("./data/testset/gen/names.csv")
+        .extend(pl.read_csv("./data/testset/gen/top_pronouns.csv").rename({"count_is_pronoun": "count_is_noun"}))
+        .with_columns(pl.col("count").pow(args.alpha).alias("weight"))
     )
 
     dataset_nouns = (
         pl.read_csv("./data/testset/gen/top_nouns_v2.csv")
         .filter(pl.col("is_noun"))
-        .with_columns((pl.col("count_is_noun").pow(args.alpha) / pl.col("count_is_noun").pow(args.alpha).sum()).alias("proportion"))
+        .with_columns(pl.col("count_is_noun").pow(args.alpha).alias("weight"))
     )
 
     if args.backend == "mock":
@@ -222,18 +235,22 @@ if __name__ == "__main__":
         llm_gen = LLMGenSGL(tp_size=args.tp_size, max_running_requests=args.max_running_requests)
 
     names_labels = dataset_names.get_column("lemma").to_list()
-    names_alpha = dataset_names.get_column("proportion").to_numpy()
+    names_weights = dataset_names.get_column("weight").to_numpy()
 
     nouns_labels = dataset_nouns.get_column("lemma").to_list()
-    nouns_alpha = dataset_nouns.get_column("proportion").to_numpy()
+    nouns_weights = dataset_nouns.get_column("weight").to_numpy()
 
     object_labels = names_labels + nouns_labels
-    object_alpha = np.concatenate([names_alpha, nouns_alpha])
+    object_weights = np.concatenate([names_weights, nouns_weights])
 
     all_results: list[dict] = []
-    for verb in VERB_TARGET_5: # FIXME: change to VERB_TARGET_17 sans VERB_TARGET_5
-        subject_sampler = ThompsonSampler(names_labels, names_alpha, RAND_GEN)
-        object_sampler = ThompsonSampler(object_labels, object_alpha, RAND_GEN)
+    # _set_verb_target_5 = set(VERB_TARGET_5)
+    # verbs = [v for v in VERB_TARGET_17 if v not in _set_verb_target_5]  # FIXME: change to VERB_TARGET_17 sans VERB_TARGET_5
+    verbs = ["go", "come", "look", "stay", "talk", "listen", "cough", "blink"]
+    for verb in (pbar := tqdm(verbs, desc="verbs")):
+        pbar.set_postfix(verb=verb)
+        subject_sampler = WeightedSampler(names_labels, names_weights, RAND_GEN)
+        object_sampler = WeightedSampler(object_labels, object_weights, RAND_GEN)
         previous_outputs: list[str] = []
 
         gen_prompt = generate_prompt(
@@ -243,29 +260,15 @@ if __name__ == "__main__":
             previous_outputs=previous_outputs,
             rng=RAND_GEN,
         )
-        for round_idx in range(args.prompt_per_verb):
+        for round_idx in tqdm(range(args.round_per_verb), desc="rounds", leave=False):
             prompt_row = next(gen_prompt)
             result = llm_gen(prompt_row)
             all_results.append({**prompt_row, "llm_gen": result})
 
-            subject_sampler.discourage(prompt_row["fragment_subject"], factor=1.125)
-
             output_text = result.get("output_text")
             if output_text:
                 previous_outputs.append(output_text)
-
-                lines = output_text.strip().split("\n")
-                if len(lines) >= 2:
-                    second_line = lines[1]
-                    selected_object = None
-                    for candidate in prompt_row["fragment_object_candidates"]:
-                        if candidate in second_line:
-                            selected_object = candidate
-                            break
-                    for candidate in prompt_row["fragment_object_candidates"]:
-                        if candidate == selected_object:
-                            object_sampler.reinforce(candidate, factor=1.125)
-                        else:
-                            object_sampler.discourage(candidate, factor=1.125)
+            else:
+                logger.error(f"Error generating output for verb '{verb}' in round {round_idx}: {result.get('error')}")
 
     pl.DataFrame(all_results, schema_overrides={"llm_gen": _DTYPE_PARSED_RESULTS}).write_parquet(args.output)

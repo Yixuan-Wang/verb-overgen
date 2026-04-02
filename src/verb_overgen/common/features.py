@@ -28,3 +28,7 @@ VERB_TARGET_17: Final[list[str]] = [
     "sneeze",
     "vanish",
 ]
+
+VERB_TARGET_EXTENSION: Final[dict[str, list[str]]] = {
+    "extended_intransitive_only": ["go", "come", "look", "stay", "talk", "listen", "cough", "blink"],
+}
