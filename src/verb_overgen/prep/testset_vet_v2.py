@@ -8,10 +8,9 @@
 from pathlib import Path
 
 import polars as pl
-import hashlib
 from loguru import logger
 
-from verb_overgen.prep.lib.testset_rule import alternate_transitive
+from verb_overgen.prep.lib.testset_rule import sha256_hash, extract_causative_sentences
 
 def load_original_data(path_input: str | Path) -> pl.DataFrame:
     df = pl.read_parquet(path_input)
@@ -33,7 +32,7 @@ def load_original_data(path_input: str | Path) -> pl.DataFrame:
             pl.col("output_text"),
         ).alias("hash_context"),
         pl.col("verb", "index_verb_context"),
-        extract_sentences(
+        extract_causative_sentences(
             pl.col("output_text"),
             verb=pl.col("verb"),
         ).struct.unnest().name.prefix("sentence_"),
@@ -42,34 +41,6 @@ def load_original_data(path_input: str | Path) -> pl.DataFrame:
     ).collect()
 
     return df
-
-def sha256_hash(*expr: pl.Expr) -> pl.Expr:
-    """Hash the given expressions using SHA256 and return the hash as a hexadecimal string."""
-    concatenated = pl.concat_str(expr, separator="\t")
-    hash_expr = concatenated.map_elements(lambda x: hashlib.sha256(x.encode()).hexdigest(), pl.String)
-    return hash_expr
-
-def extract_sentences(
-    output_text: pl.Expr,
-    *,
-    verb: pl.Expr,
-):
-    """
-    Examples:
-    ```
-    dataset.select(
-        extract_sentences(
-            pl.col("llm_gen").struct.field("output_text"),
-            verb=pl.col("verb")
-        )
-    )
-    ```
-    """
-    output_text = output_text.str.split("\n")
-    sentence_context = output_text.list.first().str.strip_chars().alias("context")
-    sentence_causative = output_text.list.get(1).str.strip_chars().alias("causative")
-    sentence_transitive = pl.struct(sentence_causative, verb).map_elements(lambda s: alternate_transitive(s["causative"], s["verb"]), pl.String).alias("transitive")
-    return pl.struct(sentence_context, sentence_causative, sentence_transitive).alias("sentence")
 
 if __name__ == "__main__":
     path_input = Path("./var/testset/overgen-gemini-voi_5-20260312T045725.parquet")
