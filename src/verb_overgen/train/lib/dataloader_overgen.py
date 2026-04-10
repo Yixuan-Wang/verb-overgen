@@ -93,9 +93,10 @@ class DatasetOvergen(TorchDataset[DataOneOvergen]):
 
 
 class EvalOvergenMonitor(ptl.Callback):
-    def __init__(self, *, dataloader: TorchDataLoader[DataBatchOvergen], run_every_n_steps: int = 100):
+    def __init__(self, *, dataloader: TorchDataLoader[DataBatchOvergen], run_every_n_steps: int = 100, primary_verb: str | None = None):
         self.dataloader = dataloader
         self.run_every_n_steps = run_every_n_steps
+        self.primary_verb = primary_verb
 
     def on_train_batch_end(
         self,
@@ -144,7 +145,9 @@ class EvalOvergenMonitor(ptl.Callback):
             # df_results["nll"],
         ):
             # ci_lower, ci_upper = ci(nll_series.to_numpy())
-            dict_results[f"eval/loss_mean/{verb}_{kind}"] = nll_mean
+            dict_results[f"eval/loss_mean/{verb}/{kind}"] = nll_mean
+            if verb == self.primary_verb:
+                dict_results[f"eval/loss_mean/this/{kind}"] = nll_mean
             # dict_results[f"eval/loss_ci_lower/{verb}_{kind}"] = ci_lower
             # dict_results[f"eval/loss_ci_upper/{verb}_{kind}"] = ci_upper
 

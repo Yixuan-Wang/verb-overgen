@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from collections import Counter
+from collections import Counter, defaultdict
 from collections.abc import Generator, Sequence, Iterable
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -304,12 +304,16 @@ class SamplerBin(Sampler[list[int]]):
 class TrainTokenMonitor(ptl.Callback):
     map_token_string: dict[int, str]
     counter_token: Counter[int]
+    map_index_verb_features: dict[int, list[tuple[str, str]]]
+    counter_verb_feature: Counter[tuple[str, str]]
+    primary_verb: str | None
 
     def __init__(
         self,
         *,
         tokens_to_watch: Sequence[str],
         tokenizer: hftk.Tokenizer,
+        dataset: DatasetPyChildes,
     ):
         self.map_token_string = {}
         self.counter_token = Counter()
@@ -318,6 +322,25 @@ class TrainTokenMonitor(ptl.Callback):
             if token_id is None:
                 logger.warning(f"Token '{token}' not found in tokenizer vocabulary and cannot be monitored.")
             self.map_token_string[token_id] = token
+
+        self.primary_verb = tokens_to_watch[0] if tokens_to_watch else None
+
+        # Pre-compute mapping from dataset index to relevant (verb, feature) pairs
+        self.counter_verb_feature = Counter()
+        self.map_index_verb_features = defaultdict(list)
+
+        dataframe_watched_features = cast(
+            pl.DataFrame,
+            dataset.dataframe.lazy().select(
+                "index",
+                pl.col("featured_verbs").list.filter(pl.element().struct["verb"].is_in(tokens_to_watch)),
+            ).filter(pl.col("featured_verbs").list.len() > 0).explode("featured_verbs").collect()
+        )
+
+        for _index, _featured_verb in zip(dataframe_watched_features["index"], dataframe_watched_features["featured_verbs"]):
+            _verb = _featured_verb["verb"]
+            _feature = _featured_verb["feature"]
+            self.map_index_verb_features[_index].append((_verb, _feature))
 
     def on_train_batch_start(
         self,
@@ -332,6 +355,17 @@ class TrainTokenMonitor(ptl.Callback):
             count_token = (input_ids == token_id).sum().item()
             self.counter_token[token_id] += count_token
             dict_log[f"train/token_count/{token_str}"] = self.counter_token[token_id]
+            if token_str == self.primary_verb:
+                dict_log["train/token_count/this"] = self.counter_token[token_id]
+
+        for idx in batch["index"]:
+            for verb, feature in self.map_index_verb_features.get(idx, ()):
+                self.counter_verb_feature[(verb, feature)] += 1
+
+        for (verb, feature), count in self.counter_verb_feature.items():
+            dict_log[f"train/verb_feature/{verb}/{feature}"] = count
+            if verb == self.primary_verb:
+                dict_log[f"train/verb_feature/this/{feature}"] = count
 
         pl_module.log_dict(
             dict_log,

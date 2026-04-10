@@ -3,7 +3,7 @@ accelerator: "gpu"
 devices: 1
 
 # Training parameters
-max_epochs: 10
+max_epochs: 3
 gradient_clip_val: 1.0
 
 # Logging and checkpointing

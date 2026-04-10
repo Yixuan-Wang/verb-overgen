@@ -23,17 +23,20 @@ tokenizer: "./data/tokenizer/1024-wordlevel/tokenizer.json"
 
 # Output paths
 output:
-  root_dir: "./var/train/20260212"
+  root_dir: "./var/train/20260402"
   
 trace:
+  # These tokens will receive extra metrics
+  # - Times encountered in the training data
+  # - Overgen evaluation set run every ${trainer.log_every_n_steps}
   tokens_to_watch:
-    - "make"
+    - "${data.train.subset_verb_of_interest}"
 
 # Data loading
 data:
   train:
     path: "./data/pychildes/pychildes-morphosyntax-tokenized.20251024.parquet"
-    path_annotation: "./data/pychildes/pychildes-morphosyntax_annotation-20260321.20251024.parquet"
+    path_annotation: "./data/pychildes/pychildes-morphosyntax_annotation-20260402.20251024.parquet"
     # batch_size: 256
     shuffle: true
     shuffle_seed: null

@@ -299,9 +299,11 @@ class TrainingSession:
             input_path=self.cfg.data.eval_overgen.path,
             token_id_pad=self.token_id_pad,
         )
+        
+        tokens_to_watch = OmegaConf.select(self.cfg, "trace.tokens_to_watch", default=[])
 
         self.dataset_eval_overgen_subset = self.dataset_eval_overgen.create_subset_verb(
-            VERB_TARGET_5,
+            tokens_to_watch,
         )
 
         return {
@@ -472,9 +474,14 @@ class TrainingSession:
         )
 
         tokens_to_watch = OmegaConf.select(self.cfg, "trace.tokens_to_watch", default=[])
+        if isinstance(tokens_to_watch, str):
+            raise TypeError(f"trace.tokens_to_watch must be a list, got string: {tokens_to_watch!r}")
+        tokens_to_watch = list(tokens_to_watch)
+
         train_token_monitor = TrainTokenMonitor(
-            tokens_to_watch=[*tokens_to_watch, *VERB_TARGET_5],
+            tokens_to_watch=tokens_to_watch,
             tokenizer=self.tokenizer._tokenizer,
+            dataset=self.dataset_train,
         )
         
         callbacks = [
@@ -482,6 +489,7 @@ class TrainingSession:
             EvalOvergenMonitor(
                 dataloader=self.dataloader_eval_overgen_subset,
                 run_every_n_steps=self.cfg.trainer.log_every_n_steps,
+                primary_verb=OmegaConf.select(self.cfg, "data.train.subset_verb_of_interest") or (tokens_to_watch[0] if tokens_to_watch else None),
             ),
             callback_checkpoint,
             train_token_monitor,
@@ -613,4 +621,5 @@ if __name__ == "__main__":
     # Initialize Hydra with compose API
     with initialize_config_dir(version_base=None, config_dir=str(config_dir), job_name="train"):
         cfg = compose(config_name="train", overrides=sys.argv[1:])
+        OmegaConf.resolve(cfg)
         main(cfg)

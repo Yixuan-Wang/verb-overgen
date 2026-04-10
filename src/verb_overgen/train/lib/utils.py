@@ -1,5 +1,4 @@
 from collections.abc import Sequence
-import contextlib
 import gc
 import sys
 from importlib.resources import files as resources
@@ -7,6 +6,7 @@ from typing import Literal
 import torch
 from lightning.pytorch.callbacks import Callback
 from hydra import compose, initialize_config_dir
+from omegaconf import OmegaConf
 
 class CacheCleanCallback(Callback):
     def on_train_epoch_start(self, trainer, pl_module):
@@ -28,5 +28,6 @@ def load_train_config(
     config_dir = resources(config_pkg)
     with initialize_config_dir(version_base=None, config_dir=str(config_dir), job_name="train"):
         cfg = compose(config_name="train", overrides=overrides)
+        OmegaConf.resolve(cfg)
         return cfg
 

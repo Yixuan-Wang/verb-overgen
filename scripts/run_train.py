@@ -1,12 +1,12 @@
 #!/usr/bin/env -S uv run --no-project --script
 #SBATCH --account=aip-fredashi
-#SBATCH --job-name=effect-cry
+#SBATCH --job-name=verb-overgen-260402
 #SBATCH --cpus-per-task=8
 #SBATCH --gres=gpu:l40s:1
-#SBATCH --mem=64G
-#SBATCH --array=0-5
+#SBATCH --mem=32G
+#SBATCH --array=0-43%22
+##SBATCH --array=0-65%22  # OLD
 #SBATCH --time=3:00:00
-#SBATCH --exclude=kn107
 #SBATCH -o logs/slurm/slurm-%A_%a_%x.out.txt
 #SBATCH -e logs/slurm/slurm-%A_%a_%x.err.txt
 
@@ -23,7 +23,10 @@ from datetime import datetime
 import numpy as np
 import sh
 
-# raise NotImplementedError("Change the default overgen testset first before running training script again.")
+VERBS_OF_INTEREST = [
+    "go", "sneeze", "blink", "look", "rise", "glow",
+    "laugh", "sing", "sleep", "smile", "cry",
+]
 
 SUBSETS = [
     # "data.train.subset=full",
@@ -32,10 +35,14 @@ SUBSETS = [
 ]
 
 # 3 seed triples (seed, shuffle_seed, subset_seed), each in range(0, 1024)
-_rng = np.random.default_rng(42)
+# _rng = np.random.default_rng(3407) # OLD
+_rng = np.random.default_rng(1337)
 SEEDS: list[tuple[int, int, int]] = [
-    tuple(row) for row in _rng.integers(0, 1024, size=(3, 3)).tolist()
+    tuple(row) for row in _rng.integers(0, 1024, size=(2, 3)).tolist()
 ]
+# SEEDS: list[tuple[int, int, int]] = [  # OLD
+#     tuple(row) for row in _rng.integers(0, 1024, size=(3, 3)).tolist()  # OLD
+# ]  # OLD
 
 
 def notify(event: str, line: int | None = None):
@@ -62,20 +69,22 @@ def main():
     load_direnv()
 
     array_id = int(os.environ.get("SLURM_ARRAY_TASK_ID", "0"))
-    seed_idx, subset_idx = divmod(array_id, len(SUBSETS))
+    seed_idx, verb_idx, subset_idx = np.unravel_index(
+        array_id, (len(SEEDS), len(VERBS_OF_INTEREST), len(SUBSETS))
+    )
+    verb = VERBS_OF_INTEREST[verb_idx]
     seed, shuffle_seed, subset_seed = SEEDS[seed_idx]
     subset = SUBSETS[subset_idx]
 
     sh.uv(
         "run", "-m", "verb_overgen.train.train",
         "trainer.max_epochs=3",
-        "wandb.tags=['260325-cry']",
+        "wandb.tags=['260402']",
         f"seed={seed}",
-        # "data.train.path_annotation=./data/pychildes/pychildes-morphosyntax_annotation-20260225.20251024.parquet",
         f"data.train.shuffle_seed={shuffle_seed}",
         f"data.train.subset_seed={subset_seed}",
         subset,
-        "data.train.subset_verb_of_interest=cry",
+        f"data.train.subset_verb_of_interest={verb}",
         _fg=True,
     )
 
