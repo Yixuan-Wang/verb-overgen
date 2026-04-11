@@ -4,8 +4,7 @@
 #SBATCH --cpus-per-task=8
 #SBATCH --gres=gpu:l40s:1
 #SBATCH --mem=32G
-#SBATCH --array=0-43%22
-##SBATCH --array=0-65%22  # OLD
+#SBATCH --array=0-109%22
 #SBATCH --time=3:00:00
 #SBATCH -o logs/slurm/slurm-%A_%a_%x.out.txt
 #SBATCH -e logs/slurm/slurm-%A_%a_%x.err.txt
@@ -35,14 +34,13 @@ SUBSETS = [
 ]
 
 # 3 seed triples (seed, shuffle_seed, subset_seed), each in range(0, 1024)
-# _rng = np.random.default_rng(3407) # OLD
+_rng_old = np.random.default_rng(3407)
 _rng = np.random.default_rng(1337)
 SEEDS: list[tuple[int, int, int]] = [
+    tuple(row) for row in _rng_old.integers(0, 1024, size=(3, 3)).tolist()
+] + [
     tuple(row) for row in _rng.integers(0, 1024, size=(2, 3)).tolist()
 ]
-# SEEDS: list[tuple[int, int, int]] = [  # OLD
-#     tuple(row) for row in _rng.integers(0, 1024, size=(3, 3)).tolist()  # OLD
-# ]  # OLD
 
 
 def notify(event: str, line: int | None = None):

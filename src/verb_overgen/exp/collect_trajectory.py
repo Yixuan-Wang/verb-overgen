@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import os
 from pathlib import Path
+import itertools
 
 import ipdb
 import polars as pl
@@ -21,15 +22,42 @@ import verb_overgen.common.startup as _startup
 os.environ["WANDB_ENTITY"] = "tom-yx_wang"
 os.environ["WANDB_PROJECT"] = "25-verb-overgen"
 
-METRIC_KEYS = [
-    "train/verb_feature/this/causative",
-    "train/verb_feature/this/causative_entrenched",
-    "eval/loss_mean/this/causative",
-    "eval/loss_mean/this/transitive",
-    "eval/loss_mean/this/context_causative",
-    "eval/loss_mean/this/context_transitive",
-]
+# METRIC_KEYS = [
+#     "train/verb_feature/this/causative",
+#     "train/verb_feature/this/causative_entrenched",
+#     "eval/loss_mean/this/causative",
+#     "eval/loss_mean/this/transitive",
+#     "eval/loss_mean/this/context_causative",
+#     "eval/loss_mean/this/context_transitive",
+# ]
 
+METRIC_KEYS = list(
+    itertools.chain.from_iterable(
+        [
+            [
+                f"train/verb_feature/{verb}/causative",
+                f"train/verb_feature/{verb}/causative_entrenched",
+                f"eval/loss_mean/{verb}/causative",
+                f"eval/loss_mean/{verb}/transitive",
+                f"eval/loss_mean/{verb}/context_causative",
+                f"eval/loss_mean/{verb}/context_transitive",
+            ]
+            for verb in [
+                "go",
+                "sneeze",
+                "blink",
+                "look",
+                "rise",
+                "glow",
+                "laugh",
+                "sing",
+                "sleep",
+                "smile",
+                "cry",
+            ]
+        ]
+    )
+)
 
 @ipdb.iex
 def collect(sweep_filters) -> pl.DataFrame:
@@ -73,18 +101,18 @@ def collect(sweep_filters) -> pl.DataFrame:
 
     dataset = pl.DataFrame(
         all_rows,
-        schema={
+        schema_overrides={
             "run_name": pl.String,
             "run_subset": pl.String,
             "verb": pl.String,
             "run_seed": pl.Int64,
             "step": pl.Int64,
-            "train/verb_feature/this/causative": pl.Int64,
-            "train/verb_feature/this/causative_entrenched": pl.Int64,
-            "eval/loss_mean/this/causative": pl.Float64,
-            "eval/loss_mean/this/transitive": pl.Float64,
-            "eval/loss_mean/this/context_causative": pl.Float64,
-            "eval/loss_mean/this/context_transitive": pl.Float64,
+            # "train/verb_feature/this/causative": pl.Int64,
+            # "train/verb_feature/this/causative_entrenched": pl.Int64,
+            # "eval/loss_mean/this/causative": pl.Float64,
+            # "eval/loss_mean/this/transitive": pl.Float64,
+            # "eval/loss_mean/this/context_causative": pl.Float64,
+            # "eval/loss_mean/this/context_transitive": pl.Float64,
         },
     )
     dataset = dataset.filter(pl.all_horizontal(pl.selectors.starts_with("eval").is_not_null()))

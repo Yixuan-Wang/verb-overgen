@@ -17,7 +17,6 @@ from verb_overgen.train.lib.validate import nll, VERB_TARGET_17, VERB_TARGET_5
 os.environ["WANDB_ENTITY"] = "tom-yx_wang"
 os.environ["WANDB_PROJECT"] = "25-verb-overgen"
 
-TRAIN_DIR = Path("./var/train/20260212")
 TESTSET_INPUT_PATH = Path("./data/testset/output/testset_llm_gen.final_postprocessed_20260114T1637.parquet")
 # OUTPUT_DIR = Path("./var/exp")
 
@@ -28,8 +27,8 @@ def load_testset_input() -> pl.DataFrame:
     return dataset
 
 
-def load_run_test_data(run_name: str, run_meta: dict) -> pl.DataFrame:
-    test_dir = TRAIN_DIR / run_name / "test"
+def load_run_test_data(train_dir: Path, run_name: str, run_meta: dict) -> pl.DataFrame:
+    test_dir = train_dir / run_name / "test"
     if not test_dir.exists():
         raise ValueError(f"Test directory does not exist for run: {run_name}")
         
@@ -40,7 +39,7 @@ def load_run_test_data(run_name: str, run_meta: dict) -> pl.DataFrame:
     return df
 
 @__import__("ipdb").iex
-def collect(sweep_filters) -> pl.DataFrame:
+def collect(sweep_filters, train_dir: Path) -> pl.DataFrame:
     api = wandb.Api()
     runs = api.runs("tom-yx_wang/25-verb-overgen", filters=sweep_filters)
 
@@ -64,7 +63,7 @@ def collect(sweep_filters) -> pl.DataFrame:
             "run_seed": run_seed,
         }
 
-        df = load_run_test_data(run.name, run_meta)
+        df = load_run_test_data(train_dir, run.name, run_meta)
         all_dfs.append(df)
 
     if not all_dfs:
@@ -85,12 +84,18 @@ def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("tags", nargs="+", help="WandB tags to filter runs by (matched with $in)")
     parser.add_argument(
+        "-t", "--train-dir",
+        default="./var/train/20260402",
+        help="Training output directory (default: ./var/train/20260402)",
+    )
+    parser.add_argument(
         "-o", "--output",
         default=None,
         help="Output parquet path (default: ./data/exp/overgen_results-raw-<tags>-<timestamp>.parquet)",
     )
     args = parser.parse_args()
 
+    train_dir = Path(args.train_dir)
     sweep_filters = {"tags": {"$in": args.tags}}
 
     if args.output is None:
@@ -104,7 +109,7 @@ def main() -> None:
         raise FileExistsError(f"Output file already exists: {output_file}")
 
     logger.info(f"Collecting test results for runs with filters: {sweep_filters}")
-    dataset = collect(sweep_filters)
+    dataset = collect(sweep_filters, train_dir)
 
     Path(output_file).parent.mkdir(parents=True, exist_ok=True)
     dataset.write_parquet(output_file)
