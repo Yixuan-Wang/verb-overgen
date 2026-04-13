@@ -1,6 +1,6 @@
 import polars as pl
 
-dataset = pl.read_parquet("./data/exp/overgen_trajectory-260409-260410T0233.parquet")
+dataset = pl.read_parquet("./data/exp/overgen_trajectory-260410-260410T2356.parquet")
 
 index_dataset = [col for col in dataset.columns if not col.startswith("eval") and not col.startswith("train")]
 dataset_eval = dataset.lazy().unpivot(index=index_dataset, on=pl.selectors.starts_with("eval"), variable_name="metric", value_name="loss").with_columns(

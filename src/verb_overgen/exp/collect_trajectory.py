@@ -91,6 +91,10 @@ def collect(sweep_filters) -> pl.DataFrame:
             }
             for key in METRIC_KEYS:
                 record[key] = row.get(key)
+
+            if all(record[key] is None for key in METRIC_KEYS):
+                continue
+
             all_rows.append(record)
         logger.info(
             f"Fetching {len_history} history records for run: {run_name} (seed={run_seed}, subset={run_subset}, verb_of_interest={run_verb_of_interest})"
@@ -107,6 +111,7 @@ def collect(sweep_filters) -> pl.DataFrame:
             "verb": pl.String,
             "run_seed": pl.Int64,
             "step": pl.Int64,
+            **{key: pl.Int64 if key.startswith("train/verb_feature") else pl.Float64 for key in METRIC_KEYS},
             # "train/verb_feature/this/causative": pl.Int64,
             # "train/verb_feature/this/causative_entrenched": pl.Int64,
             # "eval/loss_mean/this/causative": pl.Float64,
