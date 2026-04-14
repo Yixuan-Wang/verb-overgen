@@ -13,7 +13,7 @@ from torch.utils.data import DataLoader as TorchDataLoader
 from torch.utils.data import Dataset as TorchDataset
 
 from verb_overgen.train.lib.dataloader import DataBatch, DataOne, collate, get_one_data, strip_last_token
-from verb_overgen.train.lib.validate import ci, nll, VERB_TARGET_5
+from verb_overgen.train.lib.validate import ci, nll, last_sentence_index, VERB_TARGET_5
 from verb_overgen.util.misc_util import ensure_dir
 
 
@@ -93,8 +93,9 @@ class DatasetOvergen(TorchDataset[DataOneOvergen]):
 
 
 class EvalOvergenMonitor(ptl.Callback):
-    def __init__(self, *, dataloader: TorchDataLoader[DataBatchOvergen], run_every_n_steps: int = 100, primary_verb: str | None = None):
+    def __init__(self, *, dataloader: TorchDataLoader[DataBatchOvergen], token_id_bos: int, run_every_n_steps: int = 100, primary_verb: str | None = None):
         self.dataloader = dataloader
+        self.token_id_bos = token_id_bos
         self.run_every_n_steps = run_every_n_steps
         self.primary_verb = primary_verb
 
@@ -126,7 +127,8 @@ class EvalOvergenMonitor(ptl.Callback):
         df_results: pl.DataFrame = pl.concat(outputs)
         df_results = (
             df_results.with_columns(
-                pl.col("token_prob").pipe(nll).alias("nll"),
+                # pl.col("token_prob").pipe(nll).alias("nll"),
+                pl.col("token_prob").list.slice(last_sentence_index(pl.col("input_ids"), self.token_id_bos)).pipe(nll).alias("nll"),
                 pl.col("kind").str.strip_prefix("sentence_"),
             )
             .group_by("verb", "kind")

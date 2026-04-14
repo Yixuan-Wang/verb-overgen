@@ -488,6 +488,7 @@ class TrainingSession:
             EvalOvergenCallback(),
             EvalOvergenMonitor(
                 dataloader=self.dataloader_eval_overgen_subset,
+                token_id_bos=self.tokenizer._tokenizer.token_to_id(BOS_TOKEN),
                 run_every_n_steps=self.cfg.trainer.log_every_n_steps,
                 primary_verb=OmegaConf.select(self.cfg, "data.train.subset_verb_of_interest") or (tokens_to_watch[0] if tokens_to_watch else None),
             ),
