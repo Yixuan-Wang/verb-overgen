@@ -75,18 +75,19 @@ def train_tokenizer_on_pychildes(
     dataset: pl.DataFrame | pl.LazyFrame,
     vocab_size: int = VOCAB_SIZE,
     kind: str = "wordlevel",
+    lemmatize: bool = True,
 ):
     lemma_expr = PYCHILDES_LEMMA
 
     dataset = dataset.lazy().filter(filter_valid_lemmas(lemma_expr))
 
-    dataset_sent = (
-        dataset
-        .with_columns(
-            content_raw="content",
-            content=get_sentence(lemma_expr)
-        )
-    )
+    if lemmatize:
+        dataset_sent = dataset.with_columns(content=get_sentence(lemma_expr))
+    else:
+        _schema = dataset.collect_schema()
+        assert "content" in _schema, "Dataset must have a 'content' column if not lemmatizing"
+        assert "content_raw" not in _schema, "Dataset must not have a 'content_raw' column if not lemmatizing"
+        dataset_sent = dataset
 
     match kind:
         case "bpe":
@@ -110,19 +111,28 @@ def main(
     input_path: str,
     output_path: str,
     kind: str,
+    vocab_size: int = VOCAB_SIZE,
+    lemmatize: bool = True,
 ):
     output_path: Path = Path(output_path)
     output_path.mkdir(parents=True, exist_ok=True)
-    output_file = output_path / "tokenizer.json"    
+    output_file = output_path / "tokenizer.json"
 
     input_path: Path = Path(input_path)
     dataset = pl.read_parquet(input_path)
-    tokenizer = train_tokenizer_on_pychildes(dataset, vocab_size=VOCAB_SIZE, kind=kind)
+    tokenizer = train_tokenizer_on_pychildes(dataset, vocab_size=vocab_size, kind=kind, lemmatize=lemmatize)
     tokenizer.save(output_file.as_posix())
 
 if __name__ == "__main__":
+    # main(
+    #     input_path="/u501/y4466wan/projects/2025/verb-overgen/data/childes-gold/test-251010T0422/merged.test.parquet/pychildes-morphosyntax.20251024.parquet",
+    #     output_path="/u501/y4466wan/projects/2025/verb-overgen/data/tokenizer/1024-wordlevel",
+    #     kind="wordlevel"
+    # )
     main(
-        input_path="/u501/y4466wan/projects/2025/verb-overgen/data/childes-gold/test-251010T0422/merged.test.parquet/pychildes-morphosyntax.20251024.parquet",
-        output_path="/u501/y4466wan/projects/2025/verb-overgen/data/tokenizer/1024-wordlevel",
-        kind="wordlevel"
+        input_path="data/pychildes/pychildes-morphosyntax.20251024.parquet",
+        output_path="data/tokenizer/1024-bpe",
+        kind="bpe",
+        vocab_size=8192,
+        lemmatize=False,
     )

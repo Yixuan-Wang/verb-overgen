@@ -19,11 +19,11 @@ wandb:
   save_dir: "./logs/wandb"
   tags: []
 
-tokenizer: "./data/tokenizer/1024-wordlevel/tokenizer.json"
+tokenizer: "./data/tokenizer/1024-bpe/tokenizer.json"
 
 # Output paths
 output:
-  root_dir: "./var/train/20260402"
+  root_dir: "./var/train/20260415-bpe"
   
 trace:
   # These tokens will receive extra metrics
@@ -35,7 +35,7 @@ trace:
 # Data loading
 data:
   train:
-    path: "./data/pychildes/pychildes-morphosyntax-tokenized.20251024.parquet"
+    path: "./data/pychildes/pychildes-morphosyntax-tokenized-bpe.20251024.parquet"
     path_annotation: "./data/pychildes/pychildes-morphosyntax_annotation-20260402.20251024.parquet"
     # batch_size: 256
     shuffle: true
@@ -49,5 +49,5 @@ data:
     # path: "./data/scamp/scamp-postprocessed-tokenized.20260101.parquet"
     # batch_size: 512
   eval_overgen:
-    path: "./data/testset/output/testset_gemini.20260402T2045.parquet" 
+    path: "./data/testset/output/testset_gemini_conjugated_bpe.20260402T2045.parquet"
     batch_size: 512

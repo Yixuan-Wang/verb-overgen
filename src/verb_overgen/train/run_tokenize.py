@@ -39,21 +39,39 @@ class Tokenize:
         tokenizer_file: str,
         input_column: str,
         output_column: str,
+        bos_after_period: bool = False,
     ):
         self.tokenizer = hf.PreTrainedTokenizerFast(
             tokenizer_object=hftk.Tokenizer.from_file(tokenizer_file),
         )
         self.input_column = input_column
         self.output_column = output_column
+        self.bos_after_period = bos_after_period
 
         self.token_id_bos = self.tokenizer._tokenizer.token_to_id(BOS_TOKEN)
         self.token_id_eos = self.tokenizer._tokenizer.token_to_id(EOS_TOKEN)
         self.token_id_pad = self.tokenizer._tokenizer.token_to_id(PAD_TOKEN)
+        self.token_id_period = self.tokenizer._tokenizer.token_to_id(".")
+
+    def _build_ids(self, enc_ids: list[int]) -> list[int]:
+        # Build [BOS, ..content.., EOS] in one pass, inserting BOS after every
+        # period that is not the final content token.
+        result = [self.token_id_bos]
+        last = len(enc_ids) - 1
+        for i, tok in enumerate(enc_ids):
+            result.append(tok)
+            if tok == self.token_id_period and i != last:
+                result.append(self.token_id_bos)
+        result.append(self.token_id_eos)
+        return result
 
     def __call__(self, table: pa.Table) -> pa.Table:
         sentences = table.column(self.input_column)
         list_tokenize_result = self.tokenizer._tokenizer.encode_batch_fast(sentences.to_pylist())
-        input_ids: list[list[int]] = [[self.token_id_bos, *enc.ids, self.token_id_eos] for enc in list_tokenize_result]
+        if self.bos_after_period:
+            input_ids: list[list[int]] = [self._build_ids(enc.ids) for enc in list_tokenize_result]
+        else:
+            input_ids = [[self.token_id_bos, *enc.ids, self.token_id_eos] for enc in list_tokenize_result]
         arr_input_ids = pa.array(input_ids, pa.list_(pa.int32()))
         table = table.append_column(self.output_column, arr_input_ids)
         return table
@@ -96,6 +114,11 @@ if __name__ == "__main__":
         help="Path to the output parquet file",
     )
     parser.add_argument(
+        "--bos-after-period",
+        action="store_true",
+        help="Insert a BOS token after each period that is not the final token",
+    )
+    parser.add_argument(
         "--cpu",
         type=int,
         help="Number of CPUs available",
@@ -119,6 +142,7 @@ if __name__ == "__main__":
             "tokenizer_file": args.tokenizer_file,
             "input_column": args.input_column,
             "output_column": args.output_column,
+            "bos_after_period": args.bos_after_period,
         },
         compute=ray.data.ActorPoolStrategy(max_size=int(available_cpu - 1)),
         batch_format="pyarrow",

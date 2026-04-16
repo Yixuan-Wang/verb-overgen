@@ -1,11 +1,11 @@
 #!/usr/bin/env -S uv run --no-project --script
 #SBATCH --account=aip-fredashi
-#SBATCH --job-name=verb-overgen-260410
+#SBATCH --job-name=verb-overgen-260415-bpe-all
 #SBATCH --cpus-per-task=8
 #SBATCH --gres=gpu:l40s:1
 #SBATCH --mem=32G
 #SBATCH --array=0-9
-#SBATCH --time=3:00:00
+#SBATCH --time=1:30:00
 #SBATCH -o logs/slurm/slurm-%A_%a_%x.out.txt
 #SBATCH -e logs/slurm/slurm-%A_%a_%x.err.txt
 
@@ -70,7 +70,7 @@ def main():
     sh.uv(
         "run", "-m", "verb_overgen.train.train",
         "trainer.max_epochs=3",
-        "wandb.tags=['260410']",
+        "wandb.tags=['260415-bpe-all']",
         f"seed={seed}",
         f"data.train.shuffle_seed={shuffle_seed}",
         f"data.train.subset_seed={subset_seed}",

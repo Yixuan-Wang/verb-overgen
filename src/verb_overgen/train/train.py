@@ -290,8 +290,7 @@ class TrainingSession:
                     randgen.manual_seed(subset_seed)
                 remove_entrenchment_on_verb(self.dataset_train, verb=subset_verb, randgen=randgen)
             case "remove_token_make":
-                _sample_frac = OmegaConf.select(self.cfg, "data.train.subset_frac", default=1.)
-                remove_token(self.dataset_train, token_id=self.tokenizer._tokenizer.token_to_id("make"), sample_frac=_sample_frac)
+                raise NotImplementedError("remove_token_make assumes each lemma is a single token, which does not hold for BPE tokenizers")
             case "none":
                 logger.warning("No filtering logic applied to training dataset")
 
@@ -478,12 +477,9 @@ class TrainingSession:
             raise TypeError(f"trace.tokens_to_watch must be a list, got string: {tokens_to_watch!r}")
         tokens_to_watch = list(tokens_to_watch)
 
-        train_token_monitor = TrainTokenMonitor(
-            tokens_to_watch=tokens_to_watch,
-            tokenizer=self.tokenizer._tokenizer,
-            dataset=self.dataset_train,
-        )
-        
+        # TrainTokenMonitor is disabled because it assumes each verb lemma is a single token,
+        # which does not hold for BPE tokenizers.
+
         callbacks = [
             EvalOvergenCallback(),
             EvalOvergenMonitor(
@@ -493,7 +489,6 @@ class TrainingSession:
                 primary_verb=OmegaConf.select(self.cfg, "data.train.subset_verb_of_interest") or (tokens_to_watch[0] if tokens_to_watch else None),
             ),
             callback_checkpoint,
-            train_token_monitor,
             CacheCleanCallback(),
             LearningRateMonitor(),
         ]
