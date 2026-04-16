@@ -127,8 +127,8 @@ class EvalOvergenMonitor(ptl.Callback):
         df_results: pl.DataFrame = pl.concat(outputs)
         df_results = (
             df_results.with_columns(
-                # pl.col("token_prob").pipe(nll).alias("nll"),
-                pl.col("token_prob").list.slice(last_sentence_index(pl.col("input_ids"), self.token_id_bos)).pipe(nll).alias("nll"),
+                pl.col("token_prob").pipe(nll).alias("nll"),
+                # pl.col("token_prob").list.slice(last_sentence_index(pl.col("input_ids"), self.token_id_bos)).pipe(nll).alias("nll"),
                 pl.col("kind").str.strip_prefix("sentence_"),
             )
             .group_by("verb", "kind")
