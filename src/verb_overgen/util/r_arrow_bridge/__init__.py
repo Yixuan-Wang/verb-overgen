@@ -30,7 +30,6 @@ by the outer project environment.
 
 Example:
 
-    from verb_overgen.util.r_arrow_bridge import RScript
     import polars as pl
 
     script = RScript(\"\"\"
@@ -42,6 +41,6 @@ Example:
     out: pl.DataFrame = script.call_table(df)
 """
 
-from verb_overgen.util.r_arrow_bridge.bridge import RExecutionError, RScript
+from .bridge import RExecutionError, RScript
 
 __all__ = ["RScript", "RExecutionError"]

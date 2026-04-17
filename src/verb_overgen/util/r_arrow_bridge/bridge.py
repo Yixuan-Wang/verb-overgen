@@ -2,7 +2,10 @@ from __future__ import annotations
 
 from importlib.resources import files as _resources
 from pathlib import Path
-from typing import Any, TypeVar, overload
+from typing import TYPE_CHECKING, Any, TypeVar, overload
+
+if TYPE_CHECKING:
+    import pandas as pd
 
 import polars as pl
 import pyarrow as pa
@@ -35,7 +38,7 @@ _WRAPPERS_R = """
 }
 """
 
-T = TypeVar("T", pl.DataFrame, pa.Table)
+T = TypeVar("T", pa.Table, "pl.DataFrame", "pd.DataFrame")
 
 
 def _unbox(r_obj: Any) -> Any:
@@ -139,7 +142,9 @@ class RScript:
     def call_table(self, df: pl.DataFrame, /) -> pl.DataFrame: ...
     @overload
     def call_table(self, df: pa.Table, /) -> pa.Table: ...
-    def call_table(self, df: pl.DataFrame | pa.Table, /) -> pl.DataFrame | pa.Table:
+    @overload
+    def call_table(self, df: pd.DataFrame, /) -> pd.DataFrame: ...
+    def call_table(self, df: pl.DataFrame | pa.Table | pd.DataFrame, /) -> pl.DataFrame | pa.Table | pd.DataFrame:
         """Pass a table through ``entry`` and return the same type.
 
         The R ``entry`` function may return an ``arrow::Table`` or a ``data.frame``/tibble;
@@ -178,9 +183,12 @@ class RScript:
             result = pl.from_arrow(pa_out)
             assert isinstance(result, pl.DataFrame)
             return result
+        import pandas as pd  # noqa: PLC0415
+        if isinstance(df, pd.DataFrame):
+            return pa_out.to_pandas()
         return pa_out
 
-    def call_scalar(self, df: pl.DataFrame | pa.Table, /) -> pa.Scalar:
+    def call_scalar(self, df: pl.DataFrame | pa.Table | pd.DataFrame, /) -> pa.Scalar:
         """Pass a table to ``entry`` and return a scalar value.
 
         The R ``entry`` function must return an ``arrow::Array`` of length 1,
@@ -215,7 +223,7 @@ class RScript:
             )
         return arr[0]
 
-    def call_value(self, df: pl.DataFrame | pa.Table, /) -> Any:
+    def call_value(self, df: pl.DataFrame | pa.Table | pd.DataFrame, /) -> Any:
         """Pass a table to ``entry`` and return an unboxed Python value.
 
         Uses rpy2's default conversion with automatic unboxing:
@@ -247,7 +255,7 @@ class RScript:
         r_result = self._invoke(self._to_r_table(df), wrapper=None)
         return _unbox(r_result)
 
-    def call_void(self, df: pl.DataFrame | pa.Table, /) -> None:
+    def call_void(self, df: pl.DataFrame | pa.Table | pd.DataFrame, /) -> None:
         """Pass a table to ``entry`` for side effects, discarding the return value.
 
         The R ``entry`` function should return ``invisible(NULL)``.
@@ -270,9 +278,15 @@ class RScript:
         """
         self._invoke(self._to_r_table(df), wrapper=None)
 
-    def _to_r_table(self, df: pl.DataFrame | pa.Table):
-        pa_table = df.to_arrow() if isinstance(df, pl.DataFrame) else df
-        return pyarrow_table_to_r_table(pa_table)
+    def _to_r_table(self, df: pl.DataFrame | pa.Table | pd.DataFrame):
+        if isinstance(df, pl.DataFrame):
+            return pyarrow_table_to_r_table(df.to_arrow())
+        if isinstance(df, pa.Table):
+            return pyarrow_table_to_r_table(df)
+        import pandas as pd_  # noqa: PLC0415
+        if isinstance(df, pd_.DataFrame):
+            return pyarrow_table_to_r_table(pa.Table.from_pandas(df))
+        raise TypeError(f"Expected pl.DataFrame, pa.Table, or pd.DataFrame, got {type(df)}")
 
     def _invoke(self, r_table, wrapper: str | None):
         try:
