@@ -9,14 +9,6 @@ if TYPE_CHECKING:
 
 import polars as pl
 import pyarrow as pa
-import rpy2.robjects as robjects
-from rpy2.rinterface_lib.embedded import RRuntimeError
-from rpy2.robjects import r as _r
-from rpy2_arrow.pyarrow_rarrow import (
-    pyarrow_table_to_r_table,
-    rarrow_to_py_array,
-    rarrow_to_py_table,
-)
 
 ENTRY_POINT = "entry"
 """Canonical R entry-point name. Every RScript source must define `entry <- function(df) { ... }`."""
@@ -101,7 +93,13 @@ class RScript:
             RExecutionError: If the source fails to parse/eval or does not define ``entry``.
         """
         self.source = source
+
+        import rpy2.robjects as robjects
+        from rpy2.robjects import r as _r
+        from rpy2.rinterface_lib.embedded import RRuntimeError
+
         self._env = robjects.Environment()
+
         try:
             _r["eval"](_r["parse"](text=_WRAPPERS_R), envir=self._env)  # type: ignore
             _r["eval"](_r["parse"](text=source), envir=self._env)  # type: ignore
@@ -177,6 +175,8 @@ class RScript:
             │ 0.9   │
             └───────┘
         """
+        from rpy2_arrow.pyarrow_rarrow import rarrow_to_py_table
+
         r_result = self._invoke(self._to_r_table(df), wrapper=".wrap_table_return")
         pa_out = rarrow_to_py_table(r_result)
         if isinstance(df, pl.DataFrame):
@@ -215,6 +215,7 @@ class RScript:
             >>> scalar.as_py()
             0.4
         """
+        from rpy2_arrow.pyarrow_rarrow import rarrow_to_py_array
         r_result = self._invoke(self._to_r_table(df), wrapper=".wrap_scalar_return")
         arr = rarrow_to_py_array(r_result)
         if len(arr) != 1:
@@ -279,6 +280,7 @@ class RScript:
         self._invoke(self._to_r_table(df), wrapper=None)
 
     def _to_r_table(self, df: pl.DataFrame | pa.Table | pd.DataFrame):
+        from rpy2_arrow.pyarrow_rarrow import pyarrow_table_to_r_table
         if isinstance(df, pl.DataFrame):
             return pyarrow_table_to_r_table(df.to_arrow())
         if isinstance(df, pa.Table):
@@ -289,6 +291,7 @@ class RScript:
         raise TypeError(f"Expected pl.DataFrame, pa.Table, or pd.DataFrame, got {type(df)}")
 
     def _invoke(self, r_table, wrapper: str | None):
+        from rpy2.rinterface_lib.embedded import RRuntimeError
         try:
             entry = self._env[ENTRY_POINT]
             result = entry(r_table)
