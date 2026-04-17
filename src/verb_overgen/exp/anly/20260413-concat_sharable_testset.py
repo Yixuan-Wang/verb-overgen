@@ -3,7 +3,7 @@ from typing import Final
 
 import polars as pl
 
-VOI_9: Final[list[str]] = ["cry", "laugh", "smile", "sing", "sleep", "go", "sneeze", "blink", "look"]
+VOI_11: Final[list[str]] = ["cry", "laugh", "smile", "sing", "sleep", "go", "sneeze", "blink", "look"] + ["rise", "glow"]
 
 PATH_DATASET_PER_VERB = "./data/exp/overgen_results-raw-260402-260413T2007.parquet"
 PATH_DATASET_ALL_VERB = "./data/exp/overgen_results-raw-260410-260413T2009.parquet"
@@ -89,4 +89,4 @@ dataset_final = dataset.select(
     #                                  [--------------------]
 )
 
-dataset_final.write_parquet("data/exp/shared/overgen_results-260413T2011.parquet")
+dataset_final.write_parquet("data/exp/shared/overgen_results-260417T0354.parquet")
