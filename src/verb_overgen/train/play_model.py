@@ -1,6 +1,7 @@
+import argparse
 import einops as eo
-import IPython
 from jaxtyping import Float
+import os
 import rich
 from rich.prompt import Prompt
 from rich.table import Table
@@ -11,53 +12,19 @@ import tokenizers as hftk
 from verb_overgen.train.train import VerbOvergenTrainModule
 from verb_overgen.common.tokenize import BOS_TOKEN
 
-torch.set_default_device("cuda")
 
-# state = torch.load("/u501/y4466wan/projects/2025/verb-overgen/data/train/gpt2/verb-overgen-gpt2-a6cbd4_vital-microwave-3_final.pth", weights_only=True, map_location="cpu")
-tokenizer = hf.PreTrainedTokenizerFast(
-    tokenizer_object=hftk.Tokenizer.from_file("./data/tokenizer/1024-wordlevel/tokenizer.json"),
-)
-
-module = VerbOvergenTrainModule.load_from_checkpoint("./var/train/20260212/avid-energy-79/checkpoints/last.ckpt", map_location="cuda")
-model = module.model
-
-# model = hf.GPT2LMHeadModel(config=hf.GPT2Config(
-#     vocab_size=tokenizer.vocab_size,
-#     n_positions=MAX_LEN,
-#     n_ctx=MAX_LEN,
-#     n_embd=768,
-#     n_layer=12,
-#     n_head=12,
-#     pad_token_id=tokenizer._tokenizer.token_to_id(PAD_TOKEN),
-#     bos_token_id=tokenizer._tokenizer.token_to_id(BOS_TOKEN),
-#     eos_token_id=tokenizer._tokenizer.token_to_id(EOS_TOKEN),
-# ))
-
-# class Dummy(torch.nn.Module):
-#     def __init__(self, model):
-#         super().__init__()
-#         self.model = model
-
-# dummy = Dummy(model)
-# dummy.load_state_dict(state["state_dict"])
-# model = dummy.model
-
-model.eval()
-torch.no_grad().__enter__()
-
-
-def loop():
+def loop(tokenizer, model):
     bos_token_id = tokenizer._tokenizer.token_to_id(BOS_TOKEN)
     while next_step := Prompt.ask("Enter prompt (or 'exit' to quit): "):
         if next_step == "exit":
             break
 
-        IPython.get_ipython().run_line_magic('clear', '') # type: ignore
+        os.system('clear')
         print(f"Prompt: {next_step}")
         input = tokenizer._tokenizer.encode(next_step)
         input_ids = torch.tensor([[bos_token_id, *input.ids]])
         input_tokens = input.tokens
-        
+
         rich.print(f"Input tokens: {input_tokens}")
 
         output = model(input_ids=input_ids)
@@ -71,7 +38,7 @@ def loop():
 
         rich.print(table)
 
-def compare():
+def compare(tokenizer, model):
     bos_token_id = tokenizer._tokenizer.token_to_id(BOS_TOKEN)
     # eos_token_id = tokenizer._tokenizer.token_to_id(EOS_TOKEN)
 
@@ -84,7 +51,7 @@ def compare():
         if not prompt_2 or prompt_2 == "exit":
             break
 
-        IPython.get_ipython().run_line_magic('clear', '') # type: ignore
+        os.system('clear')
         print(f"Prompt 1: {prompt_1}")
         print(f"Prompt 2: {prompt_2}")
         input_1 = tokenizer._tokenizer.encode(prompt_1)
@@ -119,17 +86,17 @@ def compare():
 
         print(f"Sequence probability 1: {seq_nll_1.item():.6e}")
         print(f"Sequence probability 2: {seq_nll_2.item():.6e}")
-        
+
         seq_nll_1_no_subj = token_prob_1[:, 1:].log().mean().neg()
         seq_nll_2_no_subj = token_prob_2[:, 1:].log().mean().neg()
-        
+
         print(f"Sequence probability 1 without subject: {seq_nll_1_no_subj.item():.6e}")
         print(f"Sequence probability 2 without subject: {seq_nll_2_no_subj.item():.6e}")
 
         print(f"Token-level probabilities 1: {[f'{p.item():.6e}' for p in token_prob_1[0, :, 0]]}")
         print(f"Token-level probabilities 2: {[f'{p.item():.6e}' for p in token_prob_2[0, :, 0]]}")
 
-def prefix_inspection():
+def prefix_inspection(tokenizer, model):
     bos_token_id = tokenizer._tokenizer.token_to_id(BOS_TOKEN)
     # eos_token_id = tokenizer._tokenizer.token_to_id(EOS_TOKEN)
 
@@ -153,7 +120,51 @@ def prefix_inspection():
 
     return first_token_probs
 
+def main():
+    parser = argparse.ArgumentParser()
+    parser.add_argument("command", choices=["loop", "compare", "prefix_inspection"], default="loop", nargs="?")
+    parser.add_argument("checkpoint", help="Path to the checkpoint file (.ckpt)")
+    args = parser.parse_args()
+
+    torch.set_default_device("cuda")
+
+    tokenizer = hf.PreTrainedTokenizerFast(
+        tokenizer_object=hftk.Tokenizer.from_file("./data/tokenizer/1024-wordlevel/tokenizer.json"),
+    )
+
+    module = VerbOvergenTrainModule.load_from_checkpoint(args.checkpoint, map_location="cuda")
+    model = module.model
+
+    # model = hf.GPT2LMHeadModel(config=hf.GPT2Config(
+    #     vocab_size=tokenizer.vocab_size,
+    #     n_positions=MAX_LEN,
+    #     n_ctx=MAX_LEN,
+    #     n_embd=768,
+    #     n_layer=12,
+    #     n_head=12,
+    #     pad_token_id=tokenizer._tokenizer.token_to_id(PAD_TOKEN),
+    #     bos_token_id=tokenizer._tokenizer.token_to_id(BOS_TOKEN),
+    #     eos_token_id=tokenizer._tokenizer.token_to_id(EOS_TOKEN),
+    # ))
+
+    # class Dummy(torch.nn.Module):
+    #     def __init__(self, model):
+    #         super().__init__()
+    #         self.model = model
+
+    # dummy = Dummy(model)
+    # dummy.load_state_dict(state["state_dict"])
+    # model = dummy.model
+
+    model.eval()
+    torch.no_grad().__enter__()
+
+    commands = {
+        "loop": loop,
+        "compare": compare,
+        "prefix_inspection": prefix_inspection,
+    }
+    commands[args.command](tokenizer, model)
+
 if __name__ == "__main__":
-    loop()
-    # compare()
-    # prefix_inspection()    
+    main()
