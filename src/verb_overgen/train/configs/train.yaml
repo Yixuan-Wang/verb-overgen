@@ -3,6 +3,7 @@ defaults:
   - model: gpt2_124m
   - optimizer: adamw
   - trainer: default
+  - data: default
   - _self_
 
 # Seed for reproducibility

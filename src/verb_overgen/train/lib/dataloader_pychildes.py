@@ -4,7 +4,7 @@ from collections import Counter, defaultdict
 from collections.abc import Generator, Sequence, Iterable
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import NotRequired, TypedDict, cast
+from typing import NotRequired, Required, TypedDict, cast
 
 import lightning.pytorch as ptl
 import polars as pl
@@ -18,6 +18,22 @@ from torch.utils.data import Dataset, Sampler
 
 from verb_overgen.common.features import FEATURE_CAUSATIVE, FEATURE_CAUSATIVE_ENTRENCHED
 from verb_overgen.train.lib.dataloader import DataBatch, DataOne, get_one_data, strip_last_token
+from verb_overgen.util.pl_util import sample as _lazy_sample
+
+
+class AugmentationSource(TypedDict, total=False):
+    """A single augmentation parquet pair to append to the main training data.
+
+    The parquets must share the schemas of the main/annotation training files
+    (see `prep.augmentation_preprocess`). `id_file` values must not collide with
+    those in the main dataset — the `{stem}/{line_number}` convention from
+    `augmentation_preprocess` guarantees this for distinct stems.
+    """
+
+    path_main: Required[Path]
+    path_annotation: Required[Path]
+    size: int | None
+    """Optional cap on the number of rows sampled from this source. `None` means use all rows."""
 
 
 class DataBatchPyChildes(DataBatch, TypedDict):
@@ -69,18 +85,60 @@ class DatasetPyChildes(Dataset[DataOnePyChildes]):
         token_id_pad: int,
         max_len: int,
         max_token_per_batch: int,
+        augmentation_sources: Sequence[AugmentationSource] = (),
+        augmentation_seed: int | None = None,
     ) -> DatasetPyChildes:
         return cls(
-            cls._load_data(input_path_main=input_path_main, input_path_annotation=input_path_annotation, max_len=max_len),
+            cls._load_data(
+                input_path_main=input_path_main,
+                input_path_annotation=input_path_annotation,
+                max_len=max_len,
+                augmentation_sources=augmentation_sources,
+                augmentation_seed=augmentation_seed,
+            ),
             token_id_pad=token_id_pad,
             max_len=max_len,
             max_token_per_batch=max_token_per_batch,
         )
 
     @classmethod
-    def _load_data(cls, input_path_main: Path, input_path_annotation: Path, *, max_len: int):
+    def _load_data(
+        cls,
+        input_path_main: Path,
+        input_path_annotation: Path,
+        *,
+        max_len: int,
+        augmentation_sources: Sequence[AugmentationSource] = (),
+        augmentation_seed: int | None = None,
+    ):
         lf_main = pl.scan_parquet(input_path_main)
         lf_annotation = pl.scan_parquet(input_path_annotation)
+
+        if augmentation_sources:
+            lf_aug_main_parts: list[pl.LazyFrame] = []
+            lf_aug_annotation_parts: list[pl.LazyFrame] = []
+            for src in augmentation_sources:
+                lf_src_main = pl.scan_parquet(src["path_main"])
+                lf_src_annotation = pl.scan_parquet(src["path_annotation"])
+
+                size = src.get("size")
+                if size is not None:
+                    lf_src_main = _lazy_sample(lf_src_main, size=size, seed=augmentation_seed)
+                    # The left join drops annotation rows whose `id_file` was not
+                    # sampled, so no separate sampling is needed on the annotation side.
+
+                logger.info(
+                    f"Augmentation source {src['path_main'].name}: "  # noqa: ISC002
+                    f"{'sampled ' + str(size) if size is not None else 'all rows'}"  # noqa: ISC002
+                    f"{' (seed=' + str(augmentation_seed) + ')' if size is not None and augmentation_seed is not None else ''}"  # noqa: ISC002
+                )
+                lf_aug_main_parts.append(lf_src_main)
+                lf_aug_annotation_parts.append(lf_src_annotation)
+
+            lf_main = pl.concat([lf_main, *lf_aug_main_parts], how="vertical_relaxed")
+            lf_annotation = pl.concat(
+                [lf_annotation, *lf_aug_annotation_parts], how="vertical_relaxed"
+            )
 
         logger.info("Joining main dataset and annotation dataset.")
         df = (

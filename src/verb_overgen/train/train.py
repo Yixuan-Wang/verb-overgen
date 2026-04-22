@@ -25,7 +25,7 @@ from verb_overgen.common.tokenize import BOS_TOKEN, PAD_TOKEN
 
 # from verb_overgen.train.lib.dataloader_scamp import DatasetScamp, EvalScampCallback
 from verb_overgen.train.lib.dataloader_overgen import DatasetOvergen, EvalOvergenCallback, EvalOvergenMonitor
-from verb_overgen.train.lib.dataloader_pychildes import DataBatchPyChildes, DatasetPyChildes, TrainTokenMonitor, remove_entrenchment, remove_entrenchment_on_verb, remove_preemption, remove_preemption_on_verb, remove_token
+from verb_overgen.train.lib.dataloader_pychildes import AugmentationSource, DataBatchPyChildes, DatasetPyChildes, TrainTokenMonitor, remove_entrenchment, remove_entrenchment_on_verb, remove_preemption, remove_preemption_on_verb, remove_token
 from verb_overgen.train.lib.utils import CacheCleanCallback
 from verb_overgen.train.lib.validate import eval_input_token_prob, VERB_TARGET_5
 from verb_overgen.util.misc_util import ensure_dir
@@ -258,19 +258,43 @@ class TrainingSession:
         train_data_path = str(self.cfg.data.train.path) if train_data_path is None else train_data_path
         test_data_path = str(self.cfg.data.eval_overgen.path) if test_data_path is None else test_data_path
 
+        raw_aug_sources = OmegaConf.select(self.cfg, "data.train.augmentation_sources", default=[])
+        augmentation_sources: list[AugmentationSource] = [
+            AugmentationSource(
+                path_main=Path(src["path_main"]),
+                path_annotation=Path(src["path_annotation"]),
+                **({} if (s := src.get("size")) is None else {"size": int(s)}),
+            )
+            for src in cast(list[dict[str, Any]], OmegaConf.to_container(raw_aug_sources, resolve=True))
+        ]
+        augmentation_seed: int | None = OmegaConf.select(self.cfg, "data.train.subset_seed", default=None)
+
         self.dataset_train = DatasetPyChildes.from_path(
             input_path_main=Path(self.cfg.data.train.path),
             input_path_annotation=Path(self.cfg.data.train.path_annotation),
             token_id_pad=self.token_id_pad,
             max_len=MAX_LEN,
             max_token_per_batch=self.cfg.data.train.max_token_per_batch,
+            augmentation_sources=augmentation_sources,
+            augmentation_seed=augmentation_seed,
         )
-        
+
         if OmegaConf.select(self.cfg, "data.train.debug", default=False):
             self.dataset_train.debug_truncate(1000)
-            
-        match self.cfg.data.train.subset:
+
+        subset = self.cfg.data.train.subset
+        if augmentation_sources and subset != "full-augmented":
+            raise ValueError(
+                f"augmentation_sources are set but subset={subset!r}. "
+                "Use subset=full-augmented when providing augmentation sources."
+            )
+        if subset == "full-augmented" and not augmentation_sources:
+            raise ValueError("subset=full-augmented requires at least one augmentation source.")
+
+        match subset:
             case "full":
+                pass
+            case "full-augmented":
                 pass
             case "remove_preemption":
                 remove_preemption(self.dataset_train)
@@ -347,7 +371,7 @@ class TrainingSession:
             batch_sampler=self.dataset_train.create_sampler(shuffle=randgen_train_shuffling),
             collate_fn=(
                 self.dataset_train.collate_fn_without_filter
-                if self.cfg.data.train.subset == "full"
+                if self.cfg.data.train.subset in ("full", "full-augmented")
                 else self.dataset_train.collate_fn_with_filter
             ),
         )
