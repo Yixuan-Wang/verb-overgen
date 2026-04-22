@@ -62,7 +62,7 @@ def main():
         "trainer.max_epochs=3",
         "wandb.tags=['260421-aug']",
         "data=augment-laugh-causative",
-        "data.train.subset=full-augmented",
+        "data.train.subset=full_augmented",
         "data.train.subset_verb_of_interest=laugh",
         f"seed={seed}",
         f"data.train.shuffle_seed={shuffle_seed}",

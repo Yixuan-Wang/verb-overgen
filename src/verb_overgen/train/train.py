@@ -267,7 +267,16 @@ class TrainingSession:
             )
             for src in cast(list[dict[str, Any]], OmegaConf.to_container(raw_aug_sources, resolve=True))
         ]
-        augmentation_seed: int | None = OmegaConf.select(self.cfg, "data.train.subset_seed", default=None)
+        subset_seed: int | None = OmegaConf.select(self.cfg, "data.train.subset_seed", default=None)
+
+        subset = self.cfg.data.train.subset
+        if augmentation_sources and subset != "full_augmented":
+            raise ValueError(
+                f"augmentation_sources are set but subset={subset!r}. "
+                + "Use subset=full_augmented when providing augmentation sources."
+            )
+        if subset == "full_augmented" and not augmentation_sources:
+            raise ValueError("subset=full_augmented requires at least one augmentation source.")
 
         self.dataset_train = DatasetPyChildes.from_path(
             input_path_main=Path(self.cfg.data.train.path),
@@ -276,31 +285,22 @@ class TrainingSession:
             max_len=MAX_LEN,
             max_token_per_batch=self.cfg.data.train.max_token_per_batch,
             augmentation_sources=augmentation_sources,
-            augmentation_seed=augmentation_seed,
+            augmentation_seed=subset_seed,
         )
 
         if OmegaConf.select(self.cfg, "data.train.debug", default=False):
             self.dataset_train.debug_truncate(1000)
 
-        subset = self.cfg.data.train.subset
-        if augmentation_sources and subset != "full-augmented":
-            raise ValueError(
-                f"augmentation_sources are set but subset={subset!r}. "
-                "Use subset=full-augmented when providing augmentation sources."
-            )
-        if subset == "full-augmented" and not augmentation_sources:
-            raise ValueError("subset=full-augmented requires at least one augmentation source.")
-
         match subset:
             case "full":
                 pass
-            case "full-augmented":
+            case "full_augmented":
                 pass
             case "remove_preemption":
                 remove_preemption(self.dataset_train)
             case "remove_entrenchment":
                 randgen = torch.Generator()
-                if (subset_seed := OmegaConf.select(self.cfg, "data.train.subset_seed", default=None)) is not None:
+                if subset_seed is not None:
                     randgen.manual_seed(subset_seed)
 
                 remove_entrenchment(self.dataset_train, randgen=randgen)
@@ -310,7 +310,7 @@ class TrainingSession:
             case "remove_entrenchment_on_verb":
                 subset_verb = self.cfg.data.train.subset_verb_of_interest
                 randgen = torch.Generator()
-                if (subset_seed := OmegaConf.select(self.cfg, "data.train.subset_seed", default=None)) is not None:
+                if subset_seed is not None:
                     randgen.manual_seed(subset_seed)
                 remove_entrenchment_on_verb(self.dataset_train, verb=subset_verb, randgen=randgen)
             case "remove_token_make":
@@ -371,7 +371,7 @@ class TrainingSession:
             batch_sampler=self.dataset_train.create_sampler(shuffle=randgen_train_shuffling),
             collate_fn=(
                 self.dataset_train.collate_fn_without_filter
-                if self.cfg.data.train.subset in ("full", "full-augmented")
+                if self.cfg.data.train.subset in ("full", "full_augmented")
                 else self.dataset_train.collate_fn_with_filter
             ),
         )
