@@ -9,12 +9,6 @@ import pyarrow as pa
 import regex
 import polars as pl
 
-try:
-    import spacy
-    from spacy.tokens import Doc
-except ImportError:
-    logger.warning("spacy is not installed. Spacy is required to annotate lexical information.")
-
 from typing_extensions import deprecated
 import numpy as np
 
@@ -250,6 +244,7 @@ def LIST_EXTENDED_CAUSATIVE_VERBS() -> list[str]:
 
 class BaseSpacyParser:
     def __init__(self):
+        import spacy
         self.spacy_pipeline = spacy.load("en_core_web_trf", disable=["ner"])
 
     def run_spacy(
@@ -258,6 +253,7 @@ class BaseSpacyParser:
             sentences: list[str] | None = None,
             words: list[list[str]] | None = None,
         ) -> pa.Array:
+        from spacy.tokens import Doc
         if not (sentences or words):
             raise ValueError("Either sentences or words must be provided.")
         if sentences and words:
