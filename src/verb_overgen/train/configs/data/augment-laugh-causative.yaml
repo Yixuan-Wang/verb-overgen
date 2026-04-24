@@ -1,0 +1,6 @@
+# @package data.train
+augmentation_sources:
+  - path_main: "./data/pychildes/augmentation/laugh-causative-tokenized.parquet"
+    path_annotation: "./data/pychildes/augmentation/laugh-causative-annotation.parquet"
+    # size: 200
+    # seed: 42

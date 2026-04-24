@@ -7,6 +7,8 @@ i.e. a verb that can be used as a causative but is not used as a causative here.
 
 FEATURE_CAUSATIVE: Final = "causative"
 
+FILE_ID_AUGMENTED = "AUGMENTED"
+
 VERB_TARGET_5: Final[list[str]] = ["laugh", "cry", "sing", "smile", "sleep"]
 
 VERB_TARGET_17: Final[list[str]] = [

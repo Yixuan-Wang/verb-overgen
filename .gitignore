@@ -26,4 +26,5 @@ __marimo__/
 
 wandb
 data
+!**/configs/data
 logs

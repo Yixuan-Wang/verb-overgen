@@ -19,7 +19,7 @@ from typing import cast
 import polars as pl
 import tokenizers as hftk
 
-from verb_overgen.common.features import FEATURE_CAUSATIVE, FEATURE_CAUSATIVE_ENTRENCHED
+from verb_overgen.common.features import FEATURE_CAUSATIVE, FEATURE_CAUSATIVE_ENTRENCHED, FILE_ID_AUGMENTED
 from verb_overgen.common.tokenize import UNK_TOKEN
 from verb_overgen.prep.lib.lexical import BaseSpacyParser, LIST_CAUSATIVE_VERBS
 import verb_overgen.prep.lib.pychildes_rule_causative as pychildes_rule_causative
@@ -84,12 +84,12 @@ def main():
     # 1-based index range list matching the length of the lemma list per row
     # expr_token_index = pl.int_ranges(1, pl.col("lemma").list.len() + 1, dtype=pl.Int64)
 
-    stem += "-independent"  # to distinguish from the same data if we later add context to it
+    # stem += "-independent"  # to distinguish from the same data if we later add context to it
     df = cast(
         pl.DataFrame,
         pl.DataFrame(
             {
-                "id_file": [f"{stem}/{i}" for i in range(n_rows)],
+                "id_file": [f"{FILE_ID_AUGMENTED}:{i}" for i in range(n_rows)],
                 "id_utterance": pl.Series([0 for i in range(n_rows)], dtype=pl.UInt64),
                 "content_raw": lines,
                 "roberta": spacy_result,

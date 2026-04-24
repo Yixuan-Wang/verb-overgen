@@ -16,7 +16,7 @@ from torch import Tensor
 from torch.nn.utils.rnn import pad_sequence
 from torch.utils.data import Dataset, Sampler
 
-from verb_overgen.common.features import FEATURE_CAUSATIVE, FEATURE_CAUSATIVE_ENTRENCHED
+from verb_overgen.common.features import FEATURE_CAUSATIVE, FEATURE_CAUSATIVE_ENTRENCHED, FILE_ID_AUGMENTED
 from verb_overgen.train.lib.dataloader import DataBatch, DataOne, get_one_data, strip_last_token
 from verb_overgen.util.pl_util import sample as _lazy_sample
 
@@ -73,6 +73,11 @@ class DatasetPyChildes(Dataset[DataOnePyChildes]):
     max_token_per_batch: int
     """Maximum number of tokens allowed per batch during sampling."""
 
+    n_main: int = 0
+    """Number of non-augmentation rows. Augmentation rows are appended as a
+    contiguous suffix, so the main partition is `dataframe[:n_main]` and the
+    aug partition is `dataframe[n_main:]`."""
+
     index_should_remove: set[int] = field(default_factory=set)
     """A set of indices corresponding to samples that should be removed during training."""
 
@@ -88,17 +93,19 @@ class DatasetPyChildes(Dataset[DataOnePyChildes]):
         augmentation_sources: Sequence[AugmentationSource] = (),
         augmentation_seed: int | None = None,
     ) -> DatasetPyChildes:
+        df, n_main = cls._load_data(
+            input_path_main=input_path_main,
+            input_path_annotation=input_path_annotation,
+            max_len=max_len,
+            augmentation_sources=augmentation_sources,
+            augmentation_seed=augmentation_seed,
+        )
         return cls(
-            cls._load_data(
-                input_path_main=input_path_main,
-                input_path_annotation=input_path_annotation,
-                max_len=max_len,
-                augmentation_sources=augmentation_sources,
-                augmentation_seed=augmentation_seed,
-            ),
+            df,
             token_id_pad=token_id_pad,
             max_len=max_len,
             max_token_per_batch=max_token_per_batch,
+            n_main=n_main,
         )
 
     @classmethod
@@ -113,6 +120,8 @@ class DatasetPyChildes(Dataset[DataOnePyChildes]):
     ):
         lf_main = pl.scan_parquet(input_path_main)
         lf_annotation = pl.scan_parquet(input_path_annotation)
+
+        n_main = int(lf_main.select(pl.len()).collect().item()) # type: ignore
 
         if augmentation_sources:
             lf_aug_main_parts: list[pl.LazyFrame] = []
@@ -171,12 +180,12 @@ class DatasetPyChildes(Dataset[DataOnePyChildes]):
         if df.select(pl.col("input_ids").list.len().max()).item() > max_len:
             raise ValueError(f"Maximum sequence length in dataset exceeds max_len={max_len}")
 
-
-        return df
+        return df, n_main
 
     def debug_truncate(self, n_samples: int):
         logger.info(f"Truncating training set to {n_samples} samples for debugging.")
         self.dataframe = self.dataframe.head(n_samples)
+        self.n_main = min(self.n_main, len(self.dataframe))
 
     def __len__(self):
         return len(self.dataframe)
@@ -192,11 +201,32 @@ class DatasetPyChildes(Dataset[DataOnePyChildes]):
     def create_sampler(self, *, shuffle: bool | torch.Generator | None = None) -> SamplerBin:
         """Create a Sampler that bins samples based on their lengths.
 
+        Main (non-aug) rows are greedily binned against `max_token_per_batch`.
+        Augmentation rows (whose `id_file` starts with `FILE_ID_AUGMENTED`) are
+        dispersed at random positions into the bins *after* the bin-level
+        shuffle, using the same generator as the shuffle. The bin token budget
+        is not respected for these insertions — aug samples are expected to be
+        short.
+
         Args:
             shuffle (bool | torch.Generator | None): If True, shuffle the bins. If a torch.Generator is provided, use it for shuffling. If False or None, do not shuffle.
         """
-        list_len = cast(Sequence[int], self.dataframe.select(pl.col("input_ids").list.len()).to_series())
-        return SamplerBin(list_len, shuffle=shuffle, max_token_per_batch=self.max_token_per_batch)
+        main_len = (
+            self.dataframe.lazy()
+            .head(self.n_main)
+            .select(pl.col("input_ids").list.len())
+            .collect()
+            .to_series()
+            .to_list()
+        )
+        n_aug = len(self.dataframe) - self.n_main
+
+        return SamplerBin(
+            main_len,
+            n_aug=n_aug,
+            shuffle=shuffle,
+            max_token_per_batch=self.max_token_per_batch,
+        )
 
     @staticmethod
     def collate_utterances(batch: Sequence[DataOnePyChildes], *, max_len: int, token_id_pad: int) -> DataBatchPyChildes:
@@ -220,18 +250,28 @@ class DatasetPyChildes(Dataset[DataOnePyChildes]):
         seq_length_flat = torch.tensor(list_seq_length_flat)
 
         _acc, _start = 0, 0
-        _prev_file: str | None = None
+        # Track the last *non-aug* file in the current pack. Aug rows don't
+        # update this, so a real non-aug→non-aug file boundary still forces a
+        # break even when one or more aug rows sit between the two files.
+        _prev_non_aug_file: str | None = None
         list_ranges: list[tuple[int, int]] = []
         for _idx, (_size, _id_file) in enumerate(zip(list_seq_length_flat, list_id_file_flat, strict=True)):
-            if _prev_file is None:
-                _prev_file = _id_file
-
             if _size > max_len:
                 raise ValueError(f"Sequence at index {_idx} exceeds max_len {max_len} with size {_size}.")
-            if _acc + _size > max_len or _id_file != _prev_file:
+
+            _is_aug = _id_file.startswith(FILE_ID_AUGMENTED)
+            _file_boundary = (
+                not _is_aug
+                and _prev_non_aug_file is not None
+                and _id_file != _prev_non_aug_file
+            )
+            if _acc + _size > max_len or _file_boundary:
                 list_ranges.append((_start, _idx))
                 _acc, _start = 0, _idx
-                _prev_file = _id_file
+                _prev_non_aug_file = None
+
+            if not _is_aug:
+                _prev_non_aug_file = _id_file
             _acc += _size
 
         if _start < (_len := len(batch)):
@@ -305,17 +345,56 @@ class DatasetPyChildes(Dataset[DataOnePyChildes]):
 
 
 class SamplerBin(Sampler[list[int]]):
-    bin_length: list[tuple[int, int]]
-
     def __init__(
-        self, list_len: Sequence[int], *, max_token_per_batch: int, shuffle: bool | torch.Generator | None = None
+        self,
+        list_len: Sequence[int],
+        *,
+        max_token_per_batch: int,
+        shuffle: bool | torch.Generator | None = None,
+        n_aug: int = 0,
     ):
-        self.bin_length = list(self._create_bin_length(list_len, max_token_per_batch=max_token_per_batch))
+        """Bin samples greedily and optionally shuffle and/or disperse aug rows.
 
+        The main rows occupy dataframe indices `[0, len(list_len))`; aug rows
+        are assumed to be a contiguous suffix at indices `[len(list_len),
+        len(list_len) + n_aug)`. Bins are stored as `(start, end)` ranges and
+        materialized lazily in `__iter__`. Aug insertions (sparse — usually
+        orders of magnitude fewer than main rows) are precomputed as
+        `(position, aug_df_idx)` tuples keyed by the post-shuffle bin index.
+
+        Args:
+            list_len: Lengths of the *main* rows to be greedily binned.
+            max_token_per_batch: Greedy cap on cumulative length per bin.
+            shuffle: If truthy, permute the bin order. If a `torch.Generator`
+                is provided, it is also reused as the source of randomness
+                for aug dispersion. If falsy but `n_aug > 0`, a fresh
+                `torch.Generator` is created for dispersion only.
+            n_aug: Number of augmentation rows to disperse into the bins at
+                random positions *after* the bin shuffle. Bin token budgets
+                are not respected for these insertions.
+        """
+        self._ranges: list[tuple[int, int]] = list(
+            self._create_bin_length(list_len, max_token_per_batch=max_token_per_batch)
+        )
+        n_bins = len(self._ranges)
+        n_main = len(list_len)
+
+        generator: torch.Generator | None = None
         if shuffle:
             generator = torch.Generator() if shuffle is True else shuffle
-            indices = torch.randperm(len(self.bin_length), generator=generator).tolist()
-            self.bin_length = [self.bin_length[i] for i in indices]
+            self._order: list[int] = torch.randperm(n_bins, generator=generator).tolist()
+        else:
+            self._order = list(range(n_bins))
+
+        self._aug_inserts: list[list[tuple[int, int]]] = [[] for _ in range(n_bins)]
+        if n_aug > 0 and n_bins > 0:
+            gen = generator if generator is not None else torch.Generator()
+            bin_choice = torch.randint(0, n_bins, (n_aug,), generator=gen).tolist()
+            running_sizes = [self._ranges[self._order[i]][1] - self._ranges[self._order[i]][0] for i in range(n_bins)]
+            for aug_offset, shuf_bin in enumerate(bin_choice):
+                pos = int(torch.randint(0, running_sizes[shuf_bin] + 1, (1,), generator=gen).item())
+                self._aug_inserts[shuf_bin].append((pos, n_main + aug_offset))
+                running_sizes[shuf_bin] += 1
 
     @staticmethod
     def _create_bin_length(
@@ -353,10 +432,15 @@ class SamplerBin(Sampler[list[int]]):
             yield (acc_start, total)
 
     def __iter__(self):
-        return (list(range(start, end)) for start, end in self.bin_length)
+        for shuf_idx, orig_idx in enumerate(self._order):
+            s, e = self._ranges[orig_idx]
+            bin_list = list(range(s, e))
+            for pos, aug_df_idx in self._aug_inserts[shuf_idx]:
+                bin_list.insert(pos, aug_df_idx)
+            yield bin_list
 
     def __len__(self):
-        return len(self.bin_length)
+        return len(self._order)
 
 
 class TrainTokenMonitor(ptl.Callback):
