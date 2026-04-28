@@ -345,6 +345,12 @@ class DatasetPyChildes(Dataset[DataOnePyChildes]):
 
 
 class SamplerBin(Sampler[list[int]]):
+    _ranges: list[tuple[int, int]]
+    _n_main: int
+    _n_aug: int
+    _shuffle: bool
+    _generator: torch.Generator | None
+
     def __init__(
         self,
         list_len: Sequence[int],
@@ -357,44 +363,37 @@ class SamplerBin(Sampler[list[int]]):
 
         The main rows occupy dataframe indices `[0, len(list_len))`; aug rows
         are assumed to be a contiguous suffix at indices `[len(list_len),
-        len(list_len) + n_aug)`. Bins are stored as `(start, end)` ranges and
-        materialized lazily in `__iter__`. Aug insertions (sparse — usually
-        orders of magnitude fewer than main rows) are precomputed as
-        `(position, aug_df_idx)` tuples keyed by the post-shuffle bin index.
+        len(list_len) + n_aug)`. Bins are stored as `(start, end)` ranges in
+        `__init__`; the bin permutation and aug-row dispersion are recomputed
+        on every `__iter__` call so that each epoch sees a fresh order. The
+        cached `torch.Generator` is reused across epochs, so its RNG state
+        advances naturally.
 
         Args:
             list_len: Lengths of the *main* rows to be greedily binned.
             max_token_per_batch: Greedy cap on cumulative length per bin.
-            shuffle: If truthy, permute the bin order. If a `torch.Generator`
-                is provided, it is also reused as the source of randomness
-                for aug dispersion. If falsy but `n_aug > 0`, a fresh
-                `torch.Generator` is created for dispersion only.
+            shuffle: If truthy, permute the bin order on each `__iter__`. If
+                a `torch.Generator` is provided, it is reused as the source
+                of randomness for both shuffling and aug dispersion. If
+                falsy but `n_aug > 0`, a fresh `torch.Generator` is created
+                for dispersion only.
             n_aug: Number of augmentation rows to disperse into the bins at
                 random positions *after* the bin shuffle. Bin token budgets
                 are not respected for these insertions.
         """
-        self._ranges: list[tuple[int, int]] = list(
+        self._ranges = list(
             self._create_bin_length(list_len, max_token_per_batch=max_token_per_batch)
         )
-        n_bins = len(self._ranges)
-        n_main = len(list_len)
+        self._n_main = len(list_len)
+        self._n_aug = n_aug
+        self._shuffle = bool(shuffle)
 
-        generator: torch.Generator | None = None
         if shuffle:
-            generator = torch.Generator() if shuffle is True else shuffle
-            self._order: list[int] = torch.randperm(n_bins, generator=generator).tolist()
+            self._generator = torch.Generator() if shuffle is True else shuffle
         else:
-            self._order = list(range(n_bins))
-
-        self._aug_inserts: list[list[tuple[int, int]]] = [[] for _ in range(n_bins)]
-        if n_aug > 0 and n_bins > 0:
-            gen = generator if generator is not None else torch.Generator()
-            bin_choice = torch.randint(0, n_bins, (n_aug,), generator=gen).tolist()
-            running_sizes = [self._ranges[self._order[i]][1] - self._ranges[self._order[i]][0] for i in range(n_bins)]
-            for aug_offset, shuf_bin in enumerate(bin_choice):
-                pos = int(torch.randint(0, running_sizes[shuf_bin] + 1, (1,), generator=gen).item())
-                self._aug_inserts[shuf_bin].append((pos, n_main + aug_offset))
-                running_sizes[shuf_bin] += 1
+            if n_aug > 0:
+                raise ValueError("Augmentation rows cannot be dispersed without shuffling. Set `shuffle` to True or provide a torch.Generator.")
+            self._generator = None
 
     @staticmethod
     def _create_bin_length(
@@ -431,16 +430,47 @@ class SamplerBin(Sampler[list[int]]):
         if acc_start < total:
             yield (acc_start, total)
 
+    def _disperse_aug_inserts(self, order: list[int]) -> list[list[tuple[int, int]]]:
+        """Pick random insertion positions for aug rows across the post-shuffle bins.
+
+        Returns a list parallel to `order`: entry `i` holds the
+        `(position, df_idx)` insertions for the `i`-th post-shuffle bin.
+        """
+        n_bins = len(order)
+        aug_inserts: list[list[tuple[int, int]]] = [[] for _ in range(n_bins)]
+        if self._n_aug == 0 or n_bins == 0:
+            return aug_inserts
+
+        gen = self._generator
+        assert gen is not None, "A torch.Generator must be provided for augmentation row dispersion."
+        bin_choice = torch.randint(0, n_bins, (self._n_aug,), generator=gen).tolist()
+        running_sizes = [self._ranges[order[i]][1] - self._ranges[order[i]][0] for i in range(n_bins)]
+        for aug_offset, shuf_bin in enumerate(bin_choice):
+            pos = int(torch.randint(0, running_sizes[shuf_bin] + 1, (1,), generator=gen).item())
+            aug_inserts[shuf_bin].append((pos, self._n_main + aug_offset))
+            running_sizes[shuf_bin] += 1
+        return aug_inserts
+
     def __iter__(self):
-        for shuf_idx, orig_idx in enumerate(self._order):
+        n_bins = len(self._ranges)
+
+        if self._shuffle:
+            assert self._generator is not None, "A torch.Generator must have been provided for shuffling."
+            order = torch.randperm(n_bins, generator=self._generator).tolist()
+        else:
+            order = list(range(n_bins))
+
+        aug_inserts = self._disperse_aug_inserts(order)
+
+        for shuf_idx, orig_idx in enumerate(order):
             s, e = self._ranges[orig_idx]
             bin_list = list(range(s, e))
-            for pos, aug_df_idx in self._aug_inserts[shuf_idx]:
+            for pos, aug_df_idx in aug_inserts[shuf_idx]:
                 bin_list.insert(pos, aug_df_idx)
             yield bin_list
 
     def __len__(self):
-        return len(self._order)
+        return len(self._ranges)
 
 
 class TrainTokenMonitor(ptl.Callback):
