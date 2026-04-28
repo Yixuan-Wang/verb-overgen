@@ -1,6 +1,6 @@
 # Main configuration file
 defaults:
-  - model: gpt2_124m
+  - model: gpt2_115m
   - optimizer: adamw
   - trainer: default
   - data: default

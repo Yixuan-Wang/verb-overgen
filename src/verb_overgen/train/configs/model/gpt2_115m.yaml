@@ -1,4 +1,4 @@
-name: gpt2_124m
+name: gpt2_115m
 
 n_positions: 1024
 n_ctx: 1024
