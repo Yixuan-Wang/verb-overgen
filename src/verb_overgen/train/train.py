@@ -25,6 +25,7 @@ from verb_overgen.common.tokenize import BOS_TOKEN, PAD_TOKEN
 
 # from verb_overgen.train.lib.dataloader_scamp import DatasetScamp, EvalScampCallback
 from verb_overgen.train.lib.dataloader_overgen import DatasetOvergen, EvalOvergenCallback, EvalOvergenMonitor
+from verb_overgen.train.lib.monitor_step import MonitorStepEffect
 from verb_overgen.train.lib.dataloader_pychildes import AugmentationSource, DataBatchPyChildes, DatasetPyChildes, TrainTokenMonitor, remove_entrenchment, remove_entrenchment_on_verb, remove_preemption, remove_preemption_on_verb, remove_token
 from verb_overgen.train.lib.utils import CacheCleanCallback
 from verb_overgen.train.lib.validate import eval_input_token_prob, VERB_TARGET_5
@@ -508,7 +509,22 @@ class TrainingSession:
             dataset=self.dataset_train,
         )
         
+        monitor_step_cfg = OmegaConf.select(self.cfg, "trace.monitor_step", default=None)
+        if monitor_step_cfg is not None:
+            callbacks_extra = [MonitorStepEffect(
+                verbs=tokens_to_watch,
+                feature=monitor_step_cfg.feature,
+                dataset_train=self.dataset_train,
+                dataset_eval_overgen=self.dataset_eval_overgen,
+                eval_batch_size=self.cfg.data.eval_overgen.batch_size,
+                token_id_bos=self.tokenizer._tokenizer.token_to_id(BOS_TOKEN),
+                min_step_gap=int(OmegaConf.select(monitor_step_cfg, "min_step_gap", default=25)),
+            )]
+        else:
+            callbacks_extra = []
+
         callbacks = [
+            *callbacks_extra,
             EvalOvergenCallback(),
             EvalOvergenMonitor(
                 dataloader=self.dataloader_eval_overgen_subset,
