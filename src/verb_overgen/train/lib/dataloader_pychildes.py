@@ -350,6 +350,8 @@ class SamplerBin(Sampler[list[int]]):
     _n_aug: int
     _shuffle: bool
     _generator: torch.Generator | None
+    _order: list[int]
+    _aug_inserts: list[list[tuple[int, int]]]
 
     def __init__(
         self,
@@ -372,8 +374,8 @@ class SamplerBin(Sampler[list[int]]):
         Args:
             list_len: Lengths of the *main* rows to be greedily binned.
             max_token_per_batch: Greedy cap on cumulative length per bin.
-            shuffle: If truthy, permute the bin order on each `__iter__`. If
-                a `torch.Generator` is provided, it is reused as the source
+            shuffle: If truthy, permute the bin order once at construction time.
+                If a `torch.Generator` is provided, it is used as the source
                 of randomness for both shuffling and aug dispersion. If
                 falsy but `n_aug > 0`, a fresh `torch.Generator` is created
                 for dispersion only.
@@ -394,6 +396,14 @@ class SamplerBin(Sampler[list[int]]):
             if n_aug > 0:
                 raise ValueError("Augmentation rows cannot be dispersed without shuffling. Set `shuffle` to True or provide a torch.Generator.")
             self._generator = None
+
+        n_bins = len(self._ranges)
+        if self._shuffle:
+            assert self._generator is not None
+            self._order = torch.randperm(n_bins, generator=self._generator).tolist()
+        else:
+            self._order = list(range(n_bins))
+        self._aug_inserts = self._disperse_aug_inserts(self._order)
 
     @staticmethod
     def _create_bin_length(
@@ -452,20 +462,10 @@ class SamplerBin(Sampler[list[int]]):
         return aug_inserts
 
     def __iter__(self):
-        n_bins = len(self._ranges)
-
-        if self._shuffle:
-            assert self._generator is not None, "A torch.Generator must have been provided for shuffling."
-            order = torch.randperm(n_bins, generator=self._generator).tolist()
-        else:
-            order = list(range(n_bins))
-
-        aug_inserts = self._disperse_aug_inserts(order)
-
-        for shuf_idx, orig_idx in enumerate(order):
+        for shuf_idx, orig_idx in enumerate(self._order):
             s, e = self._ranges[orig_idx]
             bin_list = list(range(s, e))
-            for pos, aug_df_idx in aug_inserts[shuf_idx]:
+            for pos, aug_df_idx in self._aug_inserts[shuf_idx]:
                 bin_list.insert(pos, aug_df_idx)
             yield bin_list
 
