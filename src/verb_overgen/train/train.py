@@ -20,7 +20,7 @@ from torch import Tensor
 from transformers.modeling_outputs import CausalLMOutput
 from typing_extensions import override
 
-# from verb_overgen.common.features import FEATURE_CAUSATIVE
+from verb_overgen.common.features import FEATURE_CAUSATIVE, FEATURE_CAUSATIVE_ENTRENCHED
 from verb_overgen.common.tokenize import BOS_TOKEN, PAD_TOKEN
 
 # from verb_overgen.train.lib.dataloader_scamp import DatasetScamp, EvalScampCallback
@@ -511,9 +511,13 @@ class TrainingSession:
         
         monitor_step_cfg = OmegaConf.select(self.cfg, "trace.monitor_step", default=None)
         if monitor_step_cfg is not None:
-            callbacks_extra = [MonitorStepEffect(
+            monitor_step_feature: str = monitor_step_cfg.feature
+            if monitor_step_feature not in {FEATURE_CAUSATIVE, FEATURE_CAUSATIVE_ENTRENCHED}:
+                raise ValueError(f"monitor_step.feature must be one of {{{FEATURE_CAUSATIVE}, {FEATURE_CAUSATIVE_ENTRENCHED}}}, got {monitor_step_feature!r}")
+
+            callback_eval_monitor = [MonitorStepEffect(
                 verbs=tokens_to_watch,
-                feature=monitor_step_cfg.feature,
+                feature=monitor_step_feature,
                 dataset_train=self.dataset_train,
                 dataset_eval_overgen=self.dataset_eval_overgen,
                 eval_batch_size=self.cfg.data.eval_overgen.batch_size,
@@ -521,17 +525,19 @@ class TrainingSession:
                 min_step_gap=int(OmegaConf.select(monitor_step_cfg, "min_step_gap", default=25)),
             )]
         else:
-            callbacks_extra = []
+            # Use the normal eval loss monitor
+            callback_eval_monitor = [
+                EvalOvergenMonitor(
+                    dataloader=self.dataloader_eval_overgen_subset,
+                    token_id_bos=self.tokenizer._tokenizer.token_to_id(BOS_TOKEN),
+                    run_every_n_steps=self.cfg.trainer.log_every_n_steps,
+                    primary_verb=OmegaConf.select(self.cfg, "data.train.subset_verb_of_interest") or (tokens_to_watch[0] if tokens_to_watch else None),
+                ),
+            ]
 
         callbacks = [
-            *callbacks_extra,
+            *callback_eval_monitor,
             EvalOvergenCallback(),
-            EvalOvergenMonitor(
-                dataloader=self.dataloader_eval_overgen_subset,
-                token_id_bos=self.tokenizer._tokenizer.token_to_id(BOS_TOKEN),
-                run_every_n_steps=self.cfg.trainer.log_every_n_steps,
-                primary_verb=OmegaConf.select(self.cfg, "data.train.subset_verb_of_interest") or (tokens_to_watch[0] if tokens_to_watch else None),
-            ),
             callback_checkpoint,
             train_token_monitor,
             CacheCleanCallback(),
