@@ -25,7 +25,7 @@ from verb_overgen.common.tokenize import BOS_TOKEN, PAD_TOKEN
 
 # from verb_overgen.train.lib.dataloader_scamp import DatasetScamp, EvalScampCallback
 from verb_overgen.train.lib.dataloader_overgen import DatasetOvergen, EvalOvergenCallback, EvalOvergenMonitor
-from verb_overgen.train.lib.dataloader_pychildes import AugmentationSource, DataBatchPyChildes, DatasetPyChildes, TrainTokenMonitor, remove_entrenchment, remove_entrenchment_on_verb, remove_preemption, remove_preemption_on_verb, remove_token
+from verb_overgen.train.lib.dataloader_pychildes import AugmentationSource, DataBatchPyChildes, DatasetPyChildes, TrainTokenMonitor, remove_entrenchment, remove_entrenchment_on_verb, remove_entrenchment_except_verb, remove_preemption, remove_preemption_on_verb, remove_preemption_except_verb, remove_token
 from verb_overgen.train.lib.utils import CacheCleanCallback
 from verb_overgen.train.lib.validate import eval_input_token_prob, VERB_TARGET_5
 from verb_overgen.util.misc_util import ensure_dir
@@ -313,6 +313,15 @@ class TrainingSession:
                 if subset_seed is not None:
                     randgen.manual_seed(subset_seed)
                 remove_entrenchment_on_verb(self.dataset_train, verb=subset_verb, randgen=randgen)
+            case "remove_preemption_except_verb":
+                subset_verb = self.cfg.data.train.subset_verb_of_interest
+                remove_preemption_except_verb(self.dataset_train, verb=subset_verb)
+            case "remove_entrenchment_except_verb":
+                subset_verb = self.cfg.data.train.subset_verb_of_interest
+                randgen = torch.Generator()
+                if subset_seed is not None:
+                    randgen.manual_seed(subset_seed)
+                remove_entrenchment_except_verb(self.dataset_train, verb=subset_verb, randgen=randgen)
             case "remove_token_make":
                 _sample_frac = OmegaConf.select(self.cfg, "data.train.subset_frac", default=1.)
                 remove_token(self.dataset_train, token_id=self.tokenizer._tokenizer.token_to_id("make"), sample_frac=_sample_frac)

@@ -563,6 +563,50 @@ def remove_preemption_on_verb(dataset: DatasetPyChildes, *, verb: str | Iterable
     )
     dataset.index_should_remove.update(df_filter["index"])
 
+def remove_preemption_except_verb(dataset: DatasetPyChildes, *, verb: str | Iterable[str]):
+    if isinstance(verb, str):
+        expr_filter_verb = pl.element().struct["verb"].eq(verb)
+    else:
+        expr_filter_verb = pl.element().struct["verb"].is_in(list(verb))
+
+    df_filter = dataset.dataframe.filter(
+        pl.col("featured_verbs").list.eval(
+            pl.element().struct["feature"].eq(FEATURE_CAUSATIVE)
+            & ~expr_filter_verb
+        ).list.any()
+    )
+    dataset.index_should_remove.update(df_filter["index"])
+
+def _remove_entrenchment_by_verb_counts(
+    dataset: DatasetPyChildes,
+    verb_counts: pl.DataFrame,
+    *,
+    randgen: torch.Generator | None,
+):
+    """Sample and mark entrenched rows for removal, matching the given per-verb counts.
+
+    Args:
+        verb_counts: A DataFrame with columns ``verb`` (str) and ``count`` (int).
+    """
+    for verb, count in zip(verb_counts["verb"], verb_counts["count"]):
+        seed = torch.randint(0, 1_000_000, (1,)).item() if randgen else None
+        df_entrenched = dataset.dataframe.filter(
+            pl.col("featured_verbs").list.eval(
+                pl.element().struct["feature"].eq(FEATURE_CAUSATIVE_ENTRENCHED)
+                & pl.element().struct["verb"].eq(verb)
+            ).list.any(),
+        )
+        if len(df_entrenched) < count:
+            logger.warning(
+                f"Not enough entrenched (but not preemptive) samples for verb '{verb}' "
+                f"to match the count of preemptive samples. Requested {count}, but only {len(df_entrenched)} available. "
+            )
+            continue
+
+        df_sample = df_entrenched.sample(count, seed=seed)
+        dataset.index_should_remove.update(df_sample["index"])
+
+
 def remove_entrenchment(dataset: DatasetPyChildes, *, randgen: torch.Generator | None):
     """
     Warning:
@@ -583,19 +627,7 @@ def remove_entrenchment(dataset: DatasetPyChildes, *, randgen: torch.Generator |
         )
     )
 
-    for verb, count in zip(df_causative_count["verb"], df_causative_count["count"]):
-        seed = torch.randint(0, 1_000_000, (1,)).item() if randgen else None
-        df_entrenched = dataset.dataframe.filter(
-            pl.col("featured_verbs").list.eval(
-                pl.element().struct["feature"].eq(FEATURE_CAUSATIVE_ENTRENCHED) & pl.element().struct["verb"].eq(verb)
-            ).list.any(),
-        )
-        if len(df_entrenched) < count:
-            logger.warning(f"Not enough entrenched (but not preemptive) samples for verb '{verb}' to match the count of preemptive samples. Requested {count}, but only {len(df_entrenched)} available. ")
-            continue
-
-        df_sample = df_entrenched.sample(count, seed=seed)
-        dataset.index_should_remove.update(df_sample["index"])
+    _remove_entrenchment_by_verb_counts(dataset, df_causative_count, randgen=randgen)
 
 def remove_entrenchment_on_verb(dataset: DatasetPyChildes, *, verb: str | Iterable[str], randgen: torch.Generator | None):
     """
@@ -611,14 +643,14 @@ def remove_entrenchment_on_verb(dataset: DatasetPyChildes, *, verb: str | Iterab
         expr_filter_verb = pl.element().struct["verb"].eq(verb)
     else:
         expr_filter_verb = pl.element().struct["verb"].is_in(list(verb))
-    
+
     df_causative = dataset.dataframe.filter(
         pl.col("featured_verbs").list.eval(
             pl.element().struct["feature"].eq(FEATURE_CAUSATIVE)
             & expr_filter_verb
         ).list.any()
     )
-    
+
     df_causative_count = (
         df_causative.select(
             pl.col("featured_verbs").list.filter(
@@ -632,19 +664,44 @@ def remove_entrenchment_on_verb(dataset: DatasetPyChildes, *, verb: str | Iterab
         )
     )
 
-    for verb, count in zip(df_causative_count["verb"], df_causative_count["count"]):
-        seed = torch.randint(0, 1_000_000, (1,)).item() if randgen else None
-        df_entrenched = dataset.dataframe.filter(
-            pl.col("featured_verbs").list.eval(
-                pl.element().struct["feature"].eq(FEATURE_CAUSATIVE_ENTRENCHED) & pl.element().struct["verb"].eq(verb)
-            ).list.any(),
-        )
-        if len(df_entrenched) < count:
-            logger.warning(f"Not enough entrenched (but not preemptive) samples for verb '{verb}' to match the count of preemptive samples. Requested {count}, but only {len(df_entrenched)} available. ")
-            continue
+    _remove_entrenchment_by_verb_counts(dataset, df_causative_count, randgen=randgen)
 
-        df_sample = df_entrenched.sample(count, seed=seed)
-        dataset.index_should_remove.update(df_sample["index"])
+def remove_entrenchment_except_verb(dataset: DatasetPyChildes, *, verb: str | Iterable[str], randgen: torch.Generator | None):
+    """
+    Warning:
+        This actually removes non-preemption entrenchment samples for all verbs except the specified one(s).
+
+    Usage:
+        ```python
+        remove_entrenchment_except_verb(dataset, verb="laugh", randgen=torch.Generator().manual_seed(42))
+        ```
+    """
+    if isinstance(verb, str):
+        expr_filter_verb = pl.element().struct["verb"].eq(verb)
+    else:
+        expr_filter_verb = pl.element().struct["verb"].is_in(list(verb))
+
+    df_causative = dataset.dataframe.filter(
+        pl.col("featured_verbs").list.eval(
+            pl.element().struct["feature"].eq(FEATURE_CAUSATIVE)
+            & ~expr_filter_verb
+        ).list.any()
+    )
+
+    df_causative_count = (
+        df_causative.select(
+            pl.col("featured_verbs").list.filter(
+                pl.element().struct["feature"].eq(FEATURE_CAUSATIVE)
+                & ~expr_filter_verb
+            )
+        )
+        .explode("featured_verbs")
+        .select(
+            pl.col("featured_verbs").struct["verb"].value_counts().struct.unnest()
+        )
+    )
+
+    _remove_entrenchment_by_verb_counts(dataset, df_causative_count, randgen=randgen)
 
 def remove_token(dataset: DatasetPyChildes, token_id: int, *, sample_frac: float = 1.0, seed: int | None = None):
     """

@@ -4,7 +4,7 @@
 #SBATCH --cpus-per-task=8
 #SBATCH --gres=gpu:l40s:1
 #SBATCH --mem=32G
-#SBATCH --array=0-109%22
+#SBATCH --array=0-99%20
 #SBATCH --time=3:00:00
 #SBATCH -o logs/slurm/slurm-%A_%a_%x.out.txt
 #SBATCH -e logs/slurm/slurm-%A_%a_%x.err.txt
@@ -22,8 +22,10 @@ from datetime import datetime
 import numpy as np
 import sh
 
+# `glow` does not have causatives in the training set and should be excluded.
 VERBS_OF_INTEREST = [
-    "go", "sneeze", "blink", "look", "rise", "glow",
+    "go", "sneeze", "blink", "look", "rise", 
+    # "glow",
     "laugh", "sing", "sleep", "smile", "cry",
 ]
 
@@ -48,7 +50,7 @@ def notify(event: str, line: int | None = None):
     job_id = os.environ.get("SLURM_JOB_ID", "")
     array_id = os.environ.get("SLURM_ARRAY_TASK_ID", "0")
     time_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    msg = f"{event} name={job_name} id={job_id} array={array_id}"
+    msg = f"#job {event} name={job_name} id={job_id} array={array_id}"
     if line is not None:
         msg += f" line={line}"
     msg += f" time={time_str}"
@@ -62,7 +64,7 @@ def load_direnv():
 
 
 def main():
-    notify("start_job")
+    notify("start")
 
     load_direnv()
 
@@ -86,7 +88,7 @@ def main():
         _fg=True,
     )
 
-    notify("finish_job")
+    notify("finish")
 
 
 if __name__ == "__main__":
@@ -95,5 +97,5 @@ if __name__ == "__main__":
     except Exception:
         _, _, tb = sys.exc_info()
         lineno = traceback.extract_tb(tb)[-1].lineno
-        notify("fail_job", line=lineno)
+        notify("fail", line=lineno)
         raise
