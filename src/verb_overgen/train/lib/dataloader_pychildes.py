@@ -720,6 +720,76 @@ def remove_token(dataset: DatasetPyChildes, token_id: int, *, sample_frac: float
 
     dataset.index_should_remove.update(df_filter["index"])
 
+def substitute(
+    dataset: DatasetPyChildes,
+    substitutions: pl.DataFrame,
+    *,
+    columns: str | Sequence[str],
+    join_on: Sequence[str] = ("id_file", "id_utterance"),
+):
+    """Replace arbitrary columns for specific rows using an external DataFrame.
+
+    No preprocessing is applied to incoming values — the caller is responsible
+    for ensuring correct dtypes. Rows in `substitutions` that do not match any
+    row in the dataset are silently ignored.
+
+    Args:
+        dataset: The dataset whose rows will be updated in-place.
+        substitutions: A DataFrame that must contain all columns listed in
+            `join_on` and `columns`.
+        columns: Column name(s) to replace.
+        join_on: Key columns used to match rows. Defaults to `(id_file, id_utterance)`.
+    """
+    if isinstance(columns, str):
+        columns = [columns]
+
+    missing = [c for c in columns if c not in dataset.dataframe.columns]
+    if missing:
+        raise KeyError(f"substitute_column: columns not present in dataset: {missing}")
+
+    sub = substitutions.select([*join_on, *columns])
+
+    n_matched = dataset.dataframe.join(sub, on=list(join_on), how="semi").height
+    logger.info(f"substitute({list(columns)}): {n_matched} rows matched out of {len(sub)} substitution entries.")
+
+    dataset.dataframe = dataset.dataframe.update(sub, on=list(join_on))
+
+
+def substitute_on_verb(
+    dataset: DatasetPyChildes,
+    substitutions: pl.DataFrame,
+    *,
+    verb: str | Iterable[str],
+    columns: str | Sequence[str],
+    join_on: Sequence[str] = ("id_file", "id_utterance"),
+):
+    """Replace columns only for rows whose `featured_verbs` contains a given verb.
+
+    Acts as `substitute`, but first restricts the effective substitution set to
+    dataset rows that feature the specified verb(s). Entries in `substitutions`
+    that do not match such a row are ignored.
+
+    Args:
+        dataset: The dataset whose rows will be updated in-place.
+        substitutions: A DataFrame that must contain all columns listed in
+            `join_on` and `columns`.
+        verb: A single verb string or iterable of verb strings to filter on.
+        columns: Column name(s) to replace.
+        join_on: Key columns used to match rows. Defaults to `(id_file, id_utterance)`.
+    """
+    if isinstance(verb, str):
+        expr_filter_verb = pl.element().struct["verb"].eq(verb)
+    else:
+        expr_filter_verb = pl.element().struct["verb"].is_in(list(verb))
+
+    df_eligible = dataset.dataframe.filter(
+        pl.col("featured_verbs").list.eval(expr_filter_verb).list.any()
+    ).select(list(join_on))
+
+    sub_filtered = substitutions.join(df_eligible, on=list(join_on), how="semi")
+    substitute(dataset, sub_filtered, columns=columns, join_on=join_on)
+
+
 if __name__ == "__main__":
 
     from torch.utils.data import DataLoader

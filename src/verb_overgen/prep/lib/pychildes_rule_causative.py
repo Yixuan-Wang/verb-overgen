@@ -426,3 +426,37 @@ class RuleForce(MixinRuleFind):
             )
         ),
     }
+
+
+_DEFAULT_PERIPHERAL_VERBS: frozenset[str] = frozenset(
+    cls.PERIPHERAL_VERB for cls in MixinRuleFind.__subclasses__()
+)
+
+
+def substitute_causative_with_transitive(
+    sentence: str,
+    target: str,
+    peripheral_verbs: frozenset[str] = _DEFAULT_PERIPHERAL_VERBS,
+) -> str:
+    """Transform a periphrastic causative sentence into a transitive one.
+
+    E.g. "make him sing" -> "sing him", "get her to laugh" -> "laugh her".
+    """
+    lemmas = sentence.split()
+    out: list[str] = []
+    for lemma in lemmas:
+        if lemma == target:
+            obj_end = len(out)
+            # Drop a periphrastic "to" preceding the target — the lexical
+            # causative form takes a bare object, not an infinitival complement.
+            if obj_end > 0 and out[obj_end - 1] == "to":
+                obj_end -= 1
+            peripheral_idx = next(
+                (j for j in range(obj_end - 1, -1, -1) if out[j] in peripheral_verbs),
+                None,
+            )
+            if peripheral_idx is not None:
+                out = out[:peripheral_idx] + [target] + out[peripheral_idx + 1 : obj_end]
+                continue
+        out.append(lemma)
+    return " ".join(out)

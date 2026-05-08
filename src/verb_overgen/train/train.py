@@ -25,7 +25,7 @@ from verb_overgen.common.tokenize import BOS_TOKEN, PAD_TOKEN
 
 # from verb_overgen.train.lib.dataloader_scamp import DatasetScamp, EvalScampCallback
 from verb_overgen.train.lib.dataloader_overgen import DatasetOvergen, EvalOvergenCallback, EvalOvergenMonitor
-from verb_overgen.train.lib.dataloader_pychildes import AugmentationSource, DataBatchPyChildes, DatasetPyChildes, TrainTokenMonitor, remove_entrenchment, remove_entrenchment_on_verb, remove_entrenchment_except_verb, remove_preemption, remove_preemption_on_verb, remove_preemption_except_verb, remove_token
+from verb_overgen.train.lib.dataloader_pychildes import AugmentationSource, DataBatchPyChildes, DatasetPyChildes, TrainTokenMonitor, remove_entrenchment, remove_entrenchment_on_verb, remove_entrenchment_except_verb, remove_preemption, remove_preemption_on_verb, remove_preemption_except_verb, remove_token, substitute_on_verb
 from verb_overgen.train.lib.utils import CacheCleanCallback
 from verb_overgen.train.lib.validate import eval_input_token_prob, VERB_TARGET_5
 from verb_overgen.util.misc_util import ensure_dir
@@ -267,6 +267,12 @@ class TrainingSession:
             )
             for src in cast(list[dict[str, Any]], OmegaConf.to_container(raw_aug_sources, resolve=True))
         ]
+
+        raw_sub_sources = OmegaConf.select(self.cfg, "data.train.substitution_sources", default=[])
+        substitution_sources: list[str] = [
+            str(p) for p in cast(list[str], OmegaConf.to_container(raw_sub_sources, resolve=True))
+        ]
+
         subset_seed: int | None = OmegaConf.select(self.cfg, "data.train.subset_seed", default=None)
 
         subset = self.cfg.data.train.subset
@@ -277,6 +283,13 @@ class TrainingSession:
             )
         if subset == "full_augmented" and not augmentation_sources:
             raise ValueError("subset=full_augmented requires at least one augmentation source.")
+        if substitution_sources and subset != "substitute_preemption_on_verb":
+            raise ValueError(
+                f"substitution_sources are set but subset={subset!r}. "
+                + "Use subset=substitute_preemption_on_verb when providing substitution sources."
+            )
+        if subset == "substitute_preemption_on_verb" and not substitution_sources:
+            raise ValueError("subset=substitute_preemption_on_verb requires at least one substitution source.")
 
         self.dataset_train = DatasetPyChildes.from_path(
             input_path_main=Path(self.cfg.data.train.path),
@@ -322,6 +335,22 @@ class TrainingSession:
                 if subset_seed is not None:
                     randgen.manual_seed(subset_seed)
                 remove_entrenchment_except_verb(self.dataset_train, verb=subset_verb, randgen=randgen)
+            case "substitute_preemption_on_verb":
+                subset_verb = self.cfg.data.train.subset_verb_of_interest
+                df_sub = pl.concat(
+                    [pl.read_parquet(p) for p in substitution_sources],
+                    how="vertical_relaxed",
+                )
+                substitute_on_verb(
+                    self.dataset_train,
+                    df_sub,
+                    verb=subset_verb,
+                    columns=["sentence", "input_ids"],
+                )
+                randgen = torch.Generator()
+                if subset_seed is not None:
+                    randgen.manual_seed(subset_seed)
+                remove_entrenchment_on_verb(self.dataset_train, verb=subset_verb, randgen=randgen)
             case "remove_token_make":
                 _sample_frac = OmegaConf.select(self.cfg, "data.train.subset_frac", default=1.)
                 remove_token(self.dataset_train, token_id=self.tokenizer._tokenizer.token_to_id("make"), sample_frac=_sample_frac)
