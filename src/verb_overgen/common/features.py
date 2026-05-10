@@ -9,7 +9,7 @@ FEATURE_CAUSATIVE: Final = "causative"
 
 FILE_ID_AUGMENTED = "AUGMENTED"
 
-VERB_TARGET_5: Final[list[str]] = ["laugh", "cry", "sing", "smile", "sleep"]
+VERB_TARGET_5: Final[list[str]] = ["laugh", "sing", "cry", "sleep", "smile"]
 
 VERB_TARGET_17: Final[list[str]] = [
     "appear",
@@ -34,3 +34,7 @@ VERB_TARGET_17: Final[list[str]] = [
 VERB_TARGET_EXTENSION: Final[dict[str, list[str]]] = {
     "extended_intransitive_only": ["go", "come", "look", "stay", "talk", "listen", "cough", "blink"],
 }
+
+VERB_TARGET_10: Final[list[str]] = VERB_TARGET_5 + [
+    "sneeze", "go", "look", "blink", "rise",
+]

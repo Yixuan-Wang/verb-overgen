@@ -37,10 +37,29 @@ MAP_INTERNAL_SUBSET_TO_CONDITION: Final[dict[str, dict[str, str]]] = {
         "manipulation": "remove",
         "scope": "per-verb",
         "target": "e",
-    }
+    },
+    "remove_preemption_except_verb": {
+        "manipulation": "remove",
+        "scope": "except-verb",
+        "target": "p"
+    },
+    "remove_entrenchment_except_verb": {
+        "manipulation": "remove",
+        "scope": "except-verb",
+        "target": "e",
+    },
+    "substitute_preemption_on_verb": {
+        "manipulation": "substitute",
+        "scope": "per-verb",
+        "target": "p", # Notice that e is removed besides p-substitute.
+    },
 }
 
-def get_metadata(run):
+def get_metadata(
+    run,
+    *,
+    force_include_target_verb: bool = False,
+):
     cfg = OmegaConf.create(run.config)
 
     metadata_run_name = run.name
@@ -60,7 +79,7 @@ def get_metadata(run):
     else:
         metadata_seed = cfg.seed
 
-    if MAP_INTERNAL_SUBSET_TO_CONDITION[metadata_subset]["scope"] == "per-verb":
+    if force_include_target_verb or MAP_INTERNAL_SUBSET_TO_CONDITION[metadata_subset]["scope"] in {"per-verb", "except-verb"}:
         metadata_target_verb: str = cfg.data_config.train.subset_verb_of_interest
     else:
         metadata_target_verb = ""
@@ -85,6 +104,7 @@ def main() -> None:
 
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("tags", nargs="+", help="WandB tags to filter runs by (matched with $in)")
+    parser.add_argument("--force-include-target-verb", action="store_true", help="Whether to include the target verb in the metadata regardless of the manipulation scope.")
     args = parser.parse_args()
 
     sweep_filters = {"tags": {"$in": args.tags}}
@@ -94,7 +114,7 @@ def main() -> None:
 
     list_metadata = []
     for run in runs:
-        metadata = get_metadata(run)
+        metadata = get_metadata(run, force_include_target_verb=args.force_include_target_verb)
         if not metadata:
             continue
         list_metadata.append(metadata)
