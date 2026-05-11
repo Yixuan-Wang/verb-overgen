@@ -259,7 +259,7 @@ class TrainingSession:
         train_data_path = str(self.cfg.data.train.path) if train_data_path is None else train_data_path
         test_data_path = str(self.cfg.data.eval_overgen.path) if test_data_path is None else test_data_path
 
-        raw_aug_sources = OmegaConf.select(self.cfg, "data.train.augmentation_sources", default=[])
+        raw_aug_sources = OmegaConf.select(self.cfg, "data.train.augmentation_sources", default=OmegaConf.create([]))
         augmentation_sources: list[AugmentationSource] = [
             AugmentationSource(
                 path_main=Path(src["path_main"]),
@@ -269,7 +269,7 @@ class TrainingSession:
             for src in cast(list[dict[str, Any]], OmegaConf.to_container(raw_aug_sources, resolve=True))
         ]
 
-        raw_sub_sources = OmegaConf.select(self.cfg, "data.train.substitution_sources", default=[])
+        raw_sub_sources = OmegaConf.select(self.cfg, "data.train.substitution_sources", default=OmegaConf.create([]))
         substitution_sources: list[str] = [
             str(p) for p in cast(list[str], OmegaConf.to_container(raw_sub_sources, resolve=True))
         ]
