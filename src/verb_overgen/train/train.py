@@ -547,20 +547,15 @@ class TrainingSession:
             dataset=self.dataset_train,
         )
         
-        monitor_step_cfg = OmegaConf.select(self.cfg, "trace.monitor_step", default=None)
-        if monitor_step_cfg is not None:
-            monitor_step_feature: str = monitor_step_cfg.feature
-            if monitor_step_feature not in {FEATURE_CAUSATIVE, FEATURE_CAUSATIVE_ENTRENCHED}:
-                raise ValueError(f"monitor_step.feature must be one of {{{FEATURE_CAUSATIVE}, {FEATURE_CAUSATIVE_ENTRENCHED}}}, got {monitor_step_feature!r}")
-
+        should_monitor_step = OmegaConf.select(self.cfg, "trace.monitor_step", default=False)
+        if should_monitor_step:
             callback_eval_monitor = [MonitorStepEffect(
                 verbs=tokens_to_watch,
-                feature=monitor_step_feature,
                 dataset_train=self.dataset_train,
                 dataset_eval_overgen=self.dataset_eval_overgen,
                 eval_batch_size=self.cfg.data.eval_overgen.batch_size,
                 token_id_bos=self.tokenizer._tokenizer.token_to_id(BOS_TOKEN),
-                min_step_gap=int(OmegaConf.select(monitor_step_cfg, "min_step_gap", default=25)),
+                reservoir_stride=int(OmegaConf.select(self.cfg, "trace.monitor_step_reservoir_stride", default=50)),
             )]
         else:
             # Use the normal eval loss monitor

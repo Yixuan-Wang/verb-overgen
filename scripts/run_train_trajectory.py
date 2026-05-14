@@ -1,10 +1,10 @@
 #!/usr/bin/env -S uv run --no-project --script
 #SBATCH --account=aip-fredashi
-#SBATCH --job-name=verb-overgen-260505-trajectory
+#SBATCH --job-name=verb-overgen-260514-trajectory
 #SBATCH --cpus-per-task=8
 #SBATCH --gres=gpu:l40s:1
 #SBATCH --mem=32G
-#SBATCH --array=0-19
+#SBATCH --array=0-4
 #SBATCH --time=3:00:00
 #SBATCH -o logs/slurm/slurm-%A_%a_%x.out.txt
 #SBATCH -e logs/slurm/slurm-%A_%a_%x.err.txt
@@ -22,16 +22,6 @@ from datetime import datetime
 import numpy as np
 import sh
 
-VERBS_OF_INTEREST = [
-    "go", "laugh",
-]
-
-MONITORED_FEATURE = [
-    # "data.train.subset=full",
-    "+trace.monitor_step.feature=causative",
-    "+trace.monitor_step.feature=causative_entrenched",
-]
-
 # 5 seed triples (seed, shuffle_seed, subset_seed), each in range(0, 1024)
 _rng_old = np.random.default_rng(3407)
 _rng = np.random.default_rng(1337)
@@ -47,7 +37,7 @@ def notify(event: str, line: int | None = None):
     job_id = os.environ.get("SLURM_JOB_ID", "")
     array_id = os.environ.get("SLURM_ARRAY_TASK_ID", "0")
     time_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    msg = f"{event} name={job_name} id={job_id} array={array_id}"
+    msg = f"#job {event} name={job_name} id={job_id} array={array_id}"
     if line is not None:
         msg += f" line={line}"
     msg += f" time={time_str}"
@@ -61,32 +51,28 @@ def load_direnv():
 
 
 def main():
-    notify("start_job")
+    notify("start")
 
     load_direnv()
 
     array_id = int(os.environ.get("SLURM_ARRAY_TASK_ID", "0"))
-    seed_idx, verb_idx, feature_idx = np.unravel_index(
-        array_id, (len(SEEDS), len(VERBS_OF_INTEREST), len(MONITORED_FEATURE))
-    )
-    verb = VERBS_OF_INTEREST[verb_idx]
-    seed, shuffle_seed, subset_seed = SEEDS[seed_idx]
-    monitored_feature = MONITORED_FEATURE[feature_idx]
+    seed, shuffle_seed, subset_seed = SEEDS[array_id]
 
     sh.uv(
         "run", "-m", "verb_overgen.train.train",
         "trainer.max_epochs=3",
-        "wandb.tags=['260505-trajectory']",
+        "trainer.checkpoint.every_n_epochs=3",
+        "wandb.tags=['260514-trajectory']",
         f"seed={seed}",
         f"data.train.shuffle_seed={shuffle_seed}",
         f"data.train.subset_seed={subset_seed}",
-        monitored_feature,
         "data.train.subset=full",
-        f"data.train.subset_verb_of_interest={verb}",
+        "+trace=voi_10",
+        "+trace.monitor_step=true",
         _fg=True,
     )
 
-    notify("finish_job")
+    notify("finish")
 
 
 if __name__ == "__main__":
@@ -95,5 +81,5 @@ if __name__ == "__main__":
     except Exception:
         _, _, tb = sys.exc_info()
         lineno = traceback.extract_tb(tb)[-1].lineno
-        notify("fail_job", line=lineno)
+        notify("fail", line=lineno)
         raise

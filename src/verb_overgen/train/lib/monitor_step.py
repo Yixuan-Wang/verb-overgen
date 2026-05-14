@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, cast
 
@@ -9,7 +10,7 @@ import torch
 from torch.nn.utils.rnn import unpad_sequence
 from torch.utils.data import DataLoader as TorchDataLoader
 
-from verb_overgen.common.features import FEATURE_CAUSATIVE
+from verb_overgen.common.features import FEATURE_CAUSATIVE, FEATURE_CAUSATIVE_ENTRENCHED
 from verb_overgen.train.lib.dataloader_overgen import DataBatchOvergen, DatasetOvergen
 from verb_overgen.train.lib.validate import last_sentence_index, nll
 from verb_overgen.util.misc_util import ensure_dir
@@ -18,61 +19,116 @@ if TYPE_CHECKING:
     from verb_overgen.train.lib.dataloader_pychildes import DatasetPyChildes
 
 
+@dataclass
+class _PendingVerb:
+    verb: str
+    step_type: str
+    trigger_reason: str
+    feature_count_causative: int
+    feature_count_noncausative: int
+
+
 class MonitorStepEffect(ptl.Callback):
-    """Measure per-batch training-step effect on eval loss for a target (verbs, feature) pair.
+    """Measure per-batch training-step effect on eval loss, separately per verb.
 
-    Before and after each qualifying training batch, run eval on a subset dataloader
-    filtered to `verbs`. Results are accumulated and written to <run_root>/eval/ at end of training.
+    For each verb, tracks two kinds of steps:
+    - causative: batch contains FEATURE_CAUSATIVE occurrences of the verb (always triggers)
+    - non_causative: batch contains FEATURE_CAUSATIVE_ENTRENCHED occurrences.
+      Triggered by matching (noncausative_evals < causative_evals) or reservoir
+      (every reservoir_stride qualifying non-causative batches).
 
-    Throttling: a pre-eval only runs when at least `min_step_gap` steps have elapsed
-    since the last post-eval (inclusive), preventing excessive overhead.
+    Results are written to <run_root>/eval/monitor_step_<verb>.parquet at end of training.
     """
 
     def __init__(
         self,
         *,
         verbs: list[str],
-        feature: str = FEATURE_CAUSATIVE,
         dataset_train: "DatasetPyChildes",
         dataset_eval_overgen: DatasetOvergen,
         eval_batch_size: int,
         token_id_bos: int,
-        min_step_gap: int = 25,
+        reservoir_stride: int = 50,
     ) -> None:
         self.verbs = verbs
-        self.feature = feature
         self.dataset_dataframe = dataset_train.dataframe
         self.token_id_bos = token_id_bos
-        self.min_step_gap = min_step_gap
+        self.reservoir_stride = reservoir_stride
 
-        dataset_subset = dataset_eval_overgen.create_subset_verb(verbs)
-        self.dataloader: TorchDataLoader[DataBatchOvergen] = torch.utils.data.DataLoader(  # type: ignore[assignment]
-            dataset_subset,
-            batch_size=eval_batch_size,
-            shuffle=False,
-            collate_fn=dataset_subset.collate_fn,
-        )
+        self.dataloaders: dict[str, TorchDataLoader] = {}
+        for verb in verbs:
+            subset = dataset_eval_overgen.create_subset_verb([verb])
+            self.dataloaders[verb] = torch.utils.data.DataLoader(
+                subset,
+                batch_size=eval_batch_size,
+                shuffle=False,
+                collate_fn=subset.collate_fn,
+            )
 
-        self.last_post_step: int | None = None
-        self.pending_post: bool = False
-        self._pending_count: int = 0
-        self.results: list[pl.DataFrame] = []
+        self.causative_evals_run: dict[str, int] = {v: 0 for v in verbs}
+        self.noncausative_evals_run: dict[str, int] = {v: 0 for v in verbs}
+        self.batches_since_reservoir: dict[str, int] = {v: 0 for v in verbs}
 
-    def _count_feature_in_batch(self, batch_index: list[int]) -> int:
-        return (
+        self._pending: list[_PendingVerb] = []
+        self.results: dict[str, list[pl.DataFrame]] = {v: [] for v in verbs}
+
+    def _count_features_per_verb(self, batch_index: list[int]) -> dict[str, tuple[int, int]]:
+        """Return {verb: (causative_count, noncausative_count)} for all watched verbs."""
+        raw = (
             self.dataset_dataframe[batch_index]
             .lazy()
             .select("featured_verbs")
             .explode("featured_verbs")
             .filter(pl.col("featured_verbs").is_not_null())
-            .filter(
-                (pl.col("featured_verbs").struct["feature"] == self.feature)
-                & (pl.col("featured_verbs").struct["verb"].is_in(self.verbs))
+            .filter(pl.col("featured_verbs").struct["verb"].is_in(self.verbs))
+            .select(
+                pl.col("featured_verbs").struct["verb"].alias("verb"),
+                pl.col("featured_verbs").struct["feature"].alias("feature"),
             )
-            .select(pl.len())
+            .group_by("verb", "feature")
+            .agg(pl.len().alias("cnt"))
             .collect()
-            .item()  # type: ignore[union-attr]
         )
+
+        counts: dict[str, tuple[int, int]] = {v: (0, 0) for v in self.verbs}
+        for row in raw.iter_rows(named=True):
+            v, feat, cnt = row["verb"], row["feature"], row["cnt"]
+            c, n = counts[v]
+            if feat == FEATURE_CAUSATIVE:
+                counts[v] = (c + cnt, n)
+            elif feat == FEATURE_CAUSATIVE_ENTRENCHED:
+                counts[v] = (c, n + cnt)
+        return counts
+
+    def _decide_trigger(self, verb: str, c_v: int, n_v: int) -> _PendingVerb | None:
+        if c_v > 0:
+            return _PendingVerb(
+                verb=verb,
+                step_type="causative",
+                trigger_reason="causative",
+                feature_count_causative=c_v,
+                feature_count_noncausative=n_v,
+            )
+        if n_v > 0:
+            self.batches_since_reservoir[verb] += 1
+            if self.noncausative_evals_run[verb] < self.causative_evals_run[verb]:
+                return _PendingVerb(
+                    verb=verb,
+                    step_type="non_causative",
+                    trigger_reason="match",
+                    feature_count_causative=c_v,
+                    feature_count_noncausative=n_v,
+                )
+            if self.batches_since_reservoir[verb] >= self.reservoir_stride:
+                self.batches_since_reservoir[verb] = 0
+                return _PendingVerb(
+                    verb=verb,
+                    step_type="non_causative",
+                    trigger_reason="reservoir",
+                    feature_count_causative=c_v,
+                    feature_count_noncausative=n_v,
+                )
+        return None
 
     def on_train_batch_start(
         self,
@@ -81,26 +137,28 @@ class MonitorStepEffect(ptl.Callback):
         batch: Any,
         batch_idx: int,
     ) -> None:
-        count = self._count_feature_in_batch(batch["index"])
-        if count == 0:
-            return
+        counts = self._count_features_per_verb(batch["index"])
+        self._pending = []
 
-        if (
-            self.last_post_step is not None
-            and trainer.global_step - self.last_post_step < self.min_step_gap
-        ):
-            return
+        for verb in self.verbs:
+            c_v, n_v = counts[verb]
+            pending = self._decide_trigger(verb, c_v, n_v)
+            if pending is None:
+                continue
 
-        df = self._run_eval(pl_module)
-        df = df.with_columns(
-            pl.lit(trainer.global_step).alias("step"),
-            pl.lit(trainer.current_epoch).alias("epoch"),
-            pl.lit("pre").alias("phase"),
-            pl.lit(count).cast(pl.Int32).alias("feature_count"),
-        )
-        self.results.append(df)
-        self.pending_post = True
-        self._pending_count = count
+            df = self._run_eval(pl_module, self.dataloaders[verb])
+            df = df.with_columns(
+                pl.lit(verb).alias("verb"),
+                pl.lit(trainer.global_step).alias("step"),
+                pl.lit(trainer.current_epoch).alias("epoch"),
+                pl.lit("pre").alias("phase"),
+                pl.lit(pending.step_type).alias("step_type"),
+                pl.lit(pending.trigger_reason).alias("trigger_reason"),
+                pl.lit(pending.feature_count_causative).cast(pl.Int32).alias("feature_count_causative"),
+                pl.lit(pending.feature_count_noncausative).cast(pl.Int32).alias("feature_count_noncausative"),
+            )
+            self.results[verb].append(df)
+            self._pending.append(pending)
 
     def on_train_batch_end(
         self,
@@ -110,25 +168,37 @@ class MonitorStepEffect(ptl.Callback):
         batch: Any,
         batch_idx: int,
     ) -> None:
-        if not self.pending_post:
-            return
+        for pending in self._pending:
+            verb = pending.verb
+            df = self._run_eval(pl_module, self.dataloaders[verb])
+            df = df.with_columns(
+                pl.lit(verb).alias("verb"),
+                pl.lit(trainer.global_step).alias("step"),
+                pl.lit(trainer.current_epoch).alias("epoch"),
+                pl.lit("post").alias("phase"),
+                pl.lit(pending.step_type).alias("step_type"),
+                pl.lit(pending.trigger_reason).alias("trigger_reason"),
+                pl.lit(pending.feature_count_causative).cast(pl.Int32).alias("feature_count_causative"),
+                pl.lit(pending.feature_count_noncausative).cast(pl.Int32).alias("feature_count_noncausative"),
+            )
+            self.results[verb].append(df)
 
-        df = self._run_eval(pl_module)
-        df = df.with_columns(
-            pl.lit(trainer.global_step).alias("step"),
-            pl.lit(trainer.current_epoch).alias("epoch"),
-            pl.lit("post").alias("phase"),
-            pl.lit(self._pending_count).cast(pl.Int32).alias("feature_count"),
-        )
-        self.results.append(df)
-        self.last_post_step = trainer.global_step
-        self.pending_post = False
+            if pending.step_type == "causative":
+                self.causative_evals_run[verb] += 1
+            else:
+                self.noncausative_evals_run[verb] += 1
 
-    def _run_eval(self, pl_module: ptl.LightningModule) -> pl.DataFrame:
+        self._pending = []
+
+    def _run_eval(
+        self,
+        pl_module: ptl.LightningModule,
+        dataloader: TorchDataLoader[DataBatchOvergen],
+    ) -> pl.DataFrame:
         pl_module.eval()
         outputs: list[pl.DataFrame] = []
         with torch.no_grad():
-            for batch_idx, batch in enumerate(self.dataloader):
+            for batch_idx, batch in enumerate(dataloader):
                 batch_on_device = {
                     k: v.to(pl_module.device) if isinstance(v, torch.Tensor) else v
                     for k, v in batch.items()
@@ -156,8 +226,8 @@ class MonitorStepEffect(ptl.Callback):
         ).drop("token_prob", "input_ids")
 
     def on_fit_end(self, trainer: ptl.Trainer, pl_module: ptl.LightningModule) -> None:
-        if not self.results:
-            return
-        df = pl.concat(self.results)
         out_dir = ensure_dir(Path(trainer.default_root_dir) / "eval")
-        df.write_parquet(out_dir / f"monitor_step_{self.feature}.parquet")
+        for verb, frames in self.results.items():
+            if not frames:
+                continue
+            pl.concat(frames).write_parquet(out_dir / f"monitor_step_{verb}.parquet")
