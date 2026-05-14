@@ -105,16 +105,54 @@ def last_sentence_index(input_ids: pl.Expr, token_id_bos: int) -> pl.Expr:
 
 def nll(token_probs: pl.Expr) -> pl.Expr:
     """Compute sentence-level negative log-likelihood (NLL) from token probabilities.
-    
+
     Args:
         token_probs (pl.Expr): A Polars `list(float)` expression representing a list of token probabilities.
-    
+
     Returns:
         A Polars `float` expression representing the NLL.
     """
     nlls = token_probs.list.eval(pl.element().log().neg())
     mean_nll = nlls.list.mean()
     return mean_nll
+
+
+def load_unigram_prob_map(parquet_path: Path) -> dict[int, float]:
+    """Load a unigram-count parquet `(token_id, count)` and return `{token_id: probability}`."""
+    df = pl.read_parquet(parquet_path)
+    total = df["count"].sum()
+    if total == 0:
+        raise ValueError(f"Empty unigram counts in {parquet_path}")
+    return dict(zip(df["token_id"].to_list(), (df["count"] / total).to_list()))
+
+
+def slor(
+    token_prob: pl.Expr,
+    input_ids: pl.Expr,
+    unigram_prob_map: dict[int, float],
+) -> pl.Expr:
+    r"""Syntactic Log-odds Ratio, length-normalized.
+
+    $\mathrm{SLOR}(x) = \frac{1}{|x|}\left(\log P(x) - \log P_\mathrm{unigram}(x)\right)$
+
+    Caller is responsible for slicing `token_prob` and `input_ids` so they refer to the same
+    tokens. Because `token_prob[i] = P(input_ids[i+1] | input_ids[:i+1])`, when slicing with
+    `last_sentence_index`, the `input_ids` slice must be offset by +1 relative to the
+    `token_prob` slice.
+    """
+    log_p_model = token_prob.list.eval(pl.element().log()).list.sum()
+    log_p_unigram = (
+        input_ids.list.eval(
+            pl.element().replace_strict(
+                old=list(unigram_prob_map.keys()),
+                new=list(unigram_prob_map.values()),
+                return_dtype=pl.Float64,
+            )
+        )
+        .list.eval(pl.element().log())
+        .list.sum()
+    )
+    return (log_p_model - log_p_unigram) / token_prob.list.len()
 
 def ci(arr: np.ndarray, n_resamples: int = 10_000, batch_size: int = 200) -> tuple[float, float]:
     """Return the 95% bootstrap CI (lower, upper) for the mean, using batched numpy."""

@@ -1,6 +1,22 @@
 import functools
 from pathlib import Path
-from typing import overload
+from typing import overload, TypeVar
+
+T = TypeVar("T")
+
+def adhoc(arg: T, /) -> T:
+    """Assert the code is running with an environment variable ADHOC set to a truthy value, and return the argument.
+    
+    Args:
+        arg (T): The argument to be returned if the assertion passes.
+    
+    Returns:
+        T: The input argument, returned if the assertion passes.
+    """
+    import os
+    if not os.environ.get("ADHOC"):
+        raise RuntimeError("Set environment variable ADHOC=1 to proceed.")
+    return arg
 
 def affirm(value, predicate = None):
     """

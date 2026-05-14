@@ -4,7 +4,7 @@
 
 import marimo
 
-__generated_with = "0.23.5"
+__generated_with = "0.23.4"
 app = marimo.App(width="medium")
 
 with app.setup:
@@ -36,7 +36,7 @@ with app.setup:
 
 @app.cell
 def setup_dataset():
-    dataset_src = pl.scan_parquet("var/results/v2/all/*.parquet")
+    dataset_src = pl.scan_parquet("var/results/v2/testset/*.parquet")
     return (dataset_src,)
 
 
@@ -50,7 +50,7 @@ def _(dataset_src):
 def _():
     mo.md(r"""
     ```
-    Schema([('run_name', String), ('run_seed', Int32), ('run_manipulation', String), ('run_scope', String), ('run_target', String), ('run_target_verb', String), ('ckpt_step', Int32), ('ckpt_epoch', Int32), ('eval_verb', String), ('eval_index_sentence', Int64), ('eval_index_verb_context', UInt32), ('eval_has_context', Boolean), ('eval_construction', String), ('result_token_prob', List(Float32)), ('result_nll', Float32)])
+    Schema([('run_name', String), ('run_seed', Int32), ('run_manipulation', String), ('run_scope', String), ('run_target', String), ('run_target_verb', String), ('ckpt_step', Int32), ('ckpt_epoch', Int32), ('eval_verb', String), ('eval_index_sentence', Int64), ('eval_index_verb_context', UInt32), ('eval_has_context', Boolean), ('eval_construction', String), ('result_token_prob', List(Float32)), ('result_nll', Float32), ('result_slor', Float64)])
     ```
     """)
     return
@@ -63,6 +63,13 @@ def display_dataset_info(dataset_src):
     assert "run_name" in dataset_src_schema
     assert "run_seed" in dataset_src_schema
     assert "run_manipulation" in dataset_src_schema
+    assert "run_scope" in dataset_src_schema
+    assert "run_target" in dataset_src_schema
+    assert "run_target_verb" in dataset_src_schema
+    assert "ckpt_step" in dataset_src_schema
+    assert "eval_verb" in dataset_src_schema
+    assert "eval_construction" in dataset_src_schema
+    assert "eval_has_context" in dataset_src_schema
 
     summary_run_name: int = dataset_src.select(pl.col("run_name").n_unique()).collect().item()
     summary_run_seed: list[int] = dataset_src.select(pl.col("run_seed").unique()).collect().to_series().sort().to_list()
@@ -197,8 +204,22 @@ def condition_picker(eval_options, run_options):
         options=eval_options["label"].to_list(),
         label="Eval conditions",
     )
-    mo.vstack([ui_run_select, ui_eval_select])
-    return ui_eval_select, ui_run_select
+    ui_metric_select = mo.ui.radio(
+        options=["NLL", "SLOR"],
+        value="NLL",
+        label="Metric",
+        inline=True,
+    )
+    mo.vstack([ui_run_select, ui_eval_select, ui_metric_select])
+    return ui_eval_select, ui_metric_select, ui_run_select
+
+
+@app.cell
+def resolve_metric(ui_metric_select):
+    metric_choice = ui_metric_select.value or "NLL"
+    metric_col = {"NLL": "result_nll", "SLOR": "result_slor"}[metric_choice]
+    metric_label = metric_choice
+    return metric_col, metric_label
 
 
 @app.cell
@@ -313,8 +334,8 @@ def filter_dataset(
 
 
 @app.cell
-def aggregate_per_verb(dataset_filtered):
-    def _nll_ci(s: pl.Series) -> pl.Series:
+def aggregate_per_verb(dataset_filtered, metric_col):
+    def _metric_ci(s: pl.Series) -> pl.Series:
         _res = stats.bootstrap((s.to_numpy(),), np.mean, confidence_level=0.95, method="percentile")
         return pl.Series([{"lo": float(_res.confidence_interval.low), "hi": float(_res.confidence_interval.high)}])
 
@@ -329,18 +350,18 @@ def aggregate_per_verb(dataset_filtered):
             "eval_verb",
         )
         .agg(
-            pl.col("result_nll").mean().alias("nll_mean"),
-            pl.col("result_nll").len().alias("n"),
-            pl.col("result_nll")
+            pl.col(metric_col).mean().alias("metric_mean"),
+            pl.col(metric_col).len().alias("n"),
+            pl.col(metric_col)
             .map_batches(
-                _nll_ci,
+                _metric_ci,
                 return_dtype=pl.Struct({"lo": pl.Float64, "hi": pl.Float64}),
                 returns_scalar=True,
             )
-            .alias("nll_ci"),
+            .alias("metric_ci"),
         )
-        .unnest("nll_ci")
-        .rename({"lo": "nll_ci_lo", "hi": "nll_ci_hi"})
+        .unnest("metric_ci")
+        .rename({"lo": "metric_ci_lo", "hi": "metric_ci_hi"})
         .sort("eval_verb", "run_manipulation", "run_target", "run_scope", "eval_construction", "eval_context")
     )
     dataset_agg
@@ -353,6 +374,7 @@ def plot_per_verb(
     details,
     eval_comparisons,
     headline,
+    metric_label,
     run_comparisons,
 ):
     if run_comparisons:
@@ -409,8 +431,8 @@ def plot_per_verb(
             if _sub.empty:
                 continue
             _x = np.array([x_pos[v] + (_i - (n_hues - 1) / 2) * dodge for v in _sub["eval_verb"]])
-            _y = _sub["nll_mean"].to_numpy()
-            _yerr = np.vstack([_y - _sub["nll_ci_lo"].to_numpy(), _sub["nll_ci_hi"].to_numpy() - _y])
+            _y = _sub["metric_mean"].to_numpy()
+            _yerr = np.vstack([_y - _sub["metric_ci_lo"].to_numpy(), _sub["metric_ci_hi"].to_numpy() - _y])
             _ax.errorbar(_x, _y, yerr=_yerr, fmt="o", capsize=3, color=palette[_i], label=_h)
         _ax.set_xticks(range(len(eval_verbs)))
         _ax.set_xticklabels(eval_verbs, rotation=45, ha="right")
@@ -418,7 +440,7 @@ def plot_per_verb(
         if facet_label:
             _ax.set_title(f"{facet_label}: {_fv}")
         if _fi == 0:
-            _ax.set_ylabel("mean NLL (95% CI)")
+            _ax.set_ylabel(f"mean {metric_label} (95% CI)")
 
     if hue_label:
         axes[-1].legend(title=hue_label, bbox_to_anchor=(1.02, 1), loc="upper left", borderaxespad=0)

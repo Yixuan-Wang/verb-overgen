@@ -11,7 +11,12 @@ import wandb
 
 from verb_overgen.exp.collect_metadata import get_metadata
 from verb_overgen.train.lib.dataloader_overgen import clean_dataset_overgen
-from verb_overgen.train.lib.validate import nll, last_sentence_index
+from verb_overgen.train.lib.validate import (
+    last_sentence_index,
+    load_unigram_prob_map,
+    nll,
+    slor,
+)
 
 ROOT_TRAIN = "var/train"
 
@@ -42,10 +47,18 @@ def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("tags", nargs="+", help="WandB tags to filter runs by (matched with $in)")
     parser.add_argument("--output-dir", required=True, help="Directory to save extracted datasets")
+    parser.add_argument("--unigram-dir", required=True, help="Directory containing per-run unigram parquets and metadata.jsonl (from collect_unigram.py)")
     args = parser.parse_args()
 
     output_dir = Path(args.output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
+
+    unigram_dir = Path(args.unigram_dir)
+    unigram_index: dict[str, Path] = {}
+    with (unigram_dir / "metadata.jsonl").open() as f:
+        for line in f:
+            entry = json.loads(line)
+            unigram_index[entry["internal"]["run_name"]] = unigram_dir / entry["path"]
 
     dataset_input = load_testset_input()
 
@@ -87,11 +100,15 @@ def main() -> None:
                 coalesce=True,
                 validate="m:1",
             )
+            unigram_prob_map = load_unigram_prob_map(unigram_index[run_name])
+            last_idx = last_sentence_index(pl.col("input_ids"), TOKEN_ID_BOS)
             dataset = dataset.with_columns(
-                pl.col("token_prob")
-                .list.slice(last_sentence_index(pl.col("input_ids"), TOKEN_ID_BOS))
-                .pipe(nll)
-                .alias("nll")
+                pl.col("token_prob").list.slice(last_idx).pipe(nll).alias("nll"),
+                slor(
+                    token_prob=pl.col("token_prob").list.slice(last_idx),
+                    input_ids=pl.col("input_ids").list.slice(last_idx + 1),
+                    unigram_prob_map=unigram_prob_map,
+                ).alias("slor"),
             )
             dataset = dataset.select(
                 pl.col("run_name"),
@@ -109,6 +126,7 @@ def main() -> None:
                 pl.col("kind").str.extract(r"(causative|transitive)").alias("eval_construction"),
                 pl.col("token_prob").alias("result_token_prob"),
                 pl.col("nll").alias("result_nll"),
+                pl.col("slor").alias("result_slor"),
             )
 
             parts = [metadata["manipulation"]]
