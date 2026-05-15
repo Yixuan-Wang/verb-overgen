@@ -1,14 +1,16 @@
-# Reconciling Exp 1 (per-verb p vs e) and Exp 2 (lex/abstract decomposition)
+# Experiment 1: Overall Preemption Effect
 
-Notes on resolving an apparent inconsistency between
-`preemption_hypothesis_test.py` and `lexical_vs_abstract_preemption.py`.
+Notes on reconciling the original per-verb contrast in
+`preemption_hypothesis_test.py` with the lexical/abstract decomposition in
+`lexical_vs_abstract_preemption.py`. These are now treated as analyses within
+the same experiment: **Experiment 1, the overall effect of preemption**.
 Date: 2026-05-13. **v3** — supersedes the 2026-05-12 raw-contrast reading.
-EXP 2 is now a difference-in-differences against the count-matched
+The decomposition is now a difference-in-differences against the count-matched
 `remove::e::*` arm at every scope.
 
-## The two experiments
+## Analyses within Experiment 1
 
-**Exp 1 — `preemption_hypothesis_test.py`**
+**Original per-verb contrast — `preemption_hypothesis_test.py`**
 Contrast `(remove::p::per-verb − remove::e::per-verb)` on
 `transitive :: with_context` NLL at the final epoch, per verb. Both arms
 remove the **same count** of laugh-instances; they differ only in *which kind*
@@ -19,7 +21,7 @@ Result: `(p − e) > 0` for most verbs (entrenchment-removal more damaging
 than lex-p-removal per matched instance), with sign flips at `go` (highest
 N_p) and `rise` (lowest N_p).
 
-**Exp 2 (v3, DiD) — `lexical_vs_abstract_preemption.py`**
+**Lexical/abstract decomposition (v3, DiD) — `lexical_vs_abstract_preemption.py`**
 Six cells: `{p, e} × {all-verb, per-verb, except-verb}` (count-matched at
 each scope). Five DiD contrasts per verb on the final-epoch
 `transitive :: with_context` cell:
@@ -34,16 +36,17 @@ each scope). Five DiD contrasts per verb on the final-epoch
 
 Sign convention: positive = preemption-specific effect beyond entrenchment
 (i.e., `e > p` on transitive NLL — removing p damaged anti-overgen more
-than removing matched e). This **reverses** Exp 1's `(p − e)` direction.
+than removing matched e). This **reverses** the original per-verb contrast's
+`(p − e)` direction.
 
-## Why the v2 (raw-EXP-2) reading was wrong
+## Why the v2 raw-decomposition reading was wrong
 
-The v2 EXP 2 used `none` and `remove::p::*` cells only, computing contrasts
-like `none − all-verb::p` against zero. But preemption is a **subset of
-entrenchment**, so any such contrast mixes (a) the preemption-specific
-signal with (b) the generic entrenchment / data-volume effect of having
-N_p fewer training tokens of the verb. The v3 DiD includes the
-count-matched `remove::e::*` arm at every scope, so each preemption
+The v2 decomposition used `none` and `remove::p::*` cells only, computing
+contrasts like `none − all-verb::p` against zero. But preemption is a
+**subset of entrenchment**, so any such contrast mixes (a) the
+preemption-specific signal with (b) the generic entrenchment / data-volume
+effect of having N_p fewer training tokens of the verb. The v3 DiD includes
+the count-matched `remove::e::*` arm at every scope, so each preemption
 contrast is net of entrenchment.
 
 ## Verb-by-verb (NLL, final epoch, `transitive :: with_context`)
@@ -70,14 +73,15 @@ lex_given_abstract`. Verified for every verb (laugh: 0.129 + (−0.108) =
 
 ## Reconciled story (v3)
 
-### Exp 1 and `lex_given_abstract` are the same contrast
+### The original contrast and `lex_given_abstract` are the same contrast
 
-Exp 1's `(p − e)` at per-verb scope is `lex_given_abstract` with its sign
-flipped — both compare `remove::p::per-verb` against the count-matched
-`remove::e::per-verb`, both keep abstract preemption intact. So the
-`lex_given_abstract` column above is Exp 1, restated inside the bigger
-model. Exp 1's "entrenchment ≥ lex-p per matched instance" finding is not
-independently confirmed by EXP 2 — it's *embedded* in it.
+The original `(p − e)` contrast at per-verb scope is `lex_given_abstract`
+with its sign flipped — both compare `remove::p::per-verb` against the
+count-matched `remove::e::per-verb`, and both keep abstract preemption
+intact. So the `lex_given_abstract` column above is the original per-verb
+analysis restated inside the larger decomposition model. The original
+"entrenchment ≥ lex-p per matched instance" finding is not an independent
+replication by a second experiment — it is embedded in the decomposition.
 
 ### The genuinely new piece: `lexical_alone` and `total`
 
@@ -154,5 +158,6 @@ are present.**
 - Five DiD contrasts as length-6 vectors; `abstract_given_lex` added per
   the v2 follow-up.
 - Sign convention reversed from v2: positive = preemption-specific effect
-  beyond entrenchment (= `e > p` direction; flips Exp 1's `(p − e)` sign).
+  beyond entrenchment (= `e > p` direction; flips the original per-verb
+  `(p − e)` sign).
 - Output figure bumped to `20260513.v3.lex-vs-abstract-preemption-did_*.pdf`.

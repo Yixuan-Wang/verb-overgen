@@ -1,4 +1,4 @@
-"""Test the original (per-verb) preemption hypothesis.
+"""Test the original per-verb contrast for the overall preemption effect.
 
 Compares `remove :: p :: per-verb` vs `remove :: e :: per-verb` on
 `transitive :: with_context` at the final training epoch, using a linear

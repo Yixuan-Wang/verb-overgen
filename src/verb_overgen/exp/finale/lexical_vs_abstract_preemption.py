@@ -15,8 +15,9 @@ Final-epoch `transitive :: with_context`. DiD contrasts per verb:
   abstract_given_lex = except_e − except_p    (mirror of lex_given_abstract)
 
 Direction: NLL ↑ / SLOR ↓ = more preemption-specific effect beyond
-entrenchment. (Equivalently, the sign convention reverses Exp 1's `p − e`:
-positive here = `e > p`, the preemption-hypothesis-supporting direction.)
+entrenchment. (Equivalently, the sign convention reverses the original
+per-verb contrast's `p − e`: positive here = `e > p`, the
+preemption-hypothesis-supporting direction.)
 """
 
 import argparse
@@ -184,7 +185,7 @@ def plot_forest(contrasts: pl.DataFrame, metric_label: str, out_path: Path) -> N
 def print_summary(contrasts: pl.DataFrame, metric_label: str) -> None:
     direction = "↑" if metric_label == "NLL" else "↓"
     print(f"\n{'='*64}")
-    print(f"  {metric_label}  —  lexical vs abstract preemption (DiD vs e arm)")
+    print(f"  {metric_label}  —  overall preemption effect: lexical/abstract decomposition")
     print("  Eval: transitive :: with_context")
     print(f"  Direction: {direction} = preemption-specific effect beyond entrenchment")
     print(f"{'='*64}")
