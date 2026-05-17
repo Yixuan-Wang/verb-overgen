@@ -1,8 +1,9 @@
 """Test whether causative updates differ from non-causative updates.
 
 Single mixed-effects model across verbs, using trajectory data rather than
-final-epoch checkpoint data.  The primary eval condition is
-`transitive :: with_context`, because those are the overgeneralization items.
+final-epoch checkpoint data.  The default eval condition is
+`transitive :: with_context`, and `--no-context` switches to
+`transitive :: no_context`.
 
 Outcome:
   nll_diff = NLL(post-update) - NLL(pre-update)
@@ -97,14 +98,8 @@ def load_data(trajectory_dir: Path, bin_size: int, has_context: bool) -> pl.Data
         .agg(
             pl.col("step_type").unique().item().alias("step_type"),
             pl.col("run_seed").unique().item().alias("run_seed"),
-            pl.col("nll_last_sentence")
-            .filter(pl.col("phase") == "pre")
-            .item()
-            .alias("nll_pre"),
-            pl.col("nll_last_sentence")
-            .filter(pl.col("phase") == "post")
-            .item()
-            .alias("nll_post"),
+            pl.col("nll_last_sentence").filter(pl.col("phase") == "pre").item().alias("nll_pre"),
+            pl.col("nll_last_sentence").filter(pl.col("phase") == "post").item().alias("nll_post"),
         )
         .with_columns(
             (pl.col("nll_post") - pl.col("nll_pre")).alias("nll_diff"),
@@ -148,9 +143,7 @@ def run_contrast(df: pl.DataFrame) -> pl.DataFrame:
 def _verb_order(by: pl.Expr) -> list[str]:
     stats = pl.read_parquet(VERB_STATS_PATH).filter(pl.col("verb").is_in(VERB_TARGET_10))
     return (
-        stats.with_columns(
-            (pl.col("count_causative") / pl.col("count_verb_like")).alias("causative_ratio")
-        )
+        stats.with_columns((pl.col("count_causative") / pl.col("count_verb_like")).alias("causative_ratio"))
         .sort(by, descending=True)["verb"]
         .to_list()
     )
@@ -257,10 +250,7 @@ def print_summary(contrasts: pl.DataFrame, context_tag: str = "with_context") ->
     by_step = _with_step_labels(contrasts)
     with pl.Config(tbl_rows=-1):
         print("\nMarginal over trajectory:")
-        print(
-            marginal.select("eval_verb", "estimate", "std.error", "statistic", "p.value")
-            .sort("eval_verb")
-        )
+        print(marginal.select("eval_verb", "estimate", "std.error", "statistic", "p.value").sort("eval_verb"))
         print("\nAt early/middle/late trajectory points:")
         print(
             by_step.select(
@@ -295,7 +285,7 @@ def main() -> None:
     os.chdir(os.environ.get("PWD", "."))
 
     has_context = not args.no_context
-    context_tag = "no-context" if args.no_context else "with-context"
+    context_tag = "no_context" if args.no_context else "with_context"
 
     print("Loading trajectory data...")
     df = load_data(args.trajectory_dir, args.bin_size, has_context)

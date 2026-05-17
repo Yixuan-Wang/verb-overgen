@@ -1,8 +1,8 @@
 """Cross-construction transfer: per-verb mixed-model contrasts.
 
 Two *separate* linear mixed-effects models (lme4), each at the final
-training epoch on `with_context` evals, with per-verb `revpairwise`
-emmeans contrasts:
+training epoch on `with_context` or `no_context` evals, with per-verb
+`revpairwise` emmeans contrasts:
 
   transitive : remove::e::per-verb  vs  remove::p::per-verb
       Does the presence of periphrastic causatives feed transitive
@@ -104,9 +104,9 @@ entry <- function(df) {
 """)
 
 
-def load_data(spec: ModelSpec, has_context: bool) -> pl.DataFrame:
+def load_data(testset_dir: Path, spec: ModelSpec, has_context: bool) -> pl.DataFrame:
     df = (
-        pl.scan_parquet(TESTSET_DIR / "*.parquet")
+        pl.scan_parquet(testset_dir / "*.parquet")
         .filter(
             pl.col("run_scope") == "per-verb",
             spec.condition_filter,
@@ -140,23 +140,22 @@ def run_contrast(df: pl.DataFrame, metric_col: str, ref_level: str) -> pl.DataFr
 
 
 def _verb_order() -> list[str]:
-    stats = pl.read_parquet(VERB_STATS_PATH).filter(
-        pl.col("verb").is_in(VERB_TARGET_10)
-    )
+    stats = pl.read_parquet(VERB_STATS_PATH).filter(pl.col("verb").is_in(VERB_TARGET_10))
     return stats.sort("count_causative", descending=True)["verb"].to_list()
 
 
 def plot_forest(
-    contrasts: pl.DataFrame, spec: ModelSpec, metric_label: str, out_path: Path,
+    contrasts: pl.DataFrame,
+    spec: ModelSpec,
+    metric_label: str,
+    out_path: Path,
     context_tag: str = "with_context",
 ) -> None:
     verbs = _verb_order()
 
     fig, ax = plt.subplots(figsize=(7, max(4, len(verbs) * 0.55)))
 
-    ordered_df = pl.DataFrame({"eval_verb": verbs}).join(
-        contrasts, on="eval_verb", how="left"
-    )
+    ordered_df = pl.DataFrame({"eval_verb": verbs}).join(contrasts, on="eval_verb", how="left")
     x = ordered_df["estimate"].to_numpy()
     xerr = ordered_df["std.error"].to_numpy() * 1.96
 
@@ -192,9 +191,12 @@ def plot_forest(
 
 
 def print_summary(
-    contrasts: pl.DataFrame, spec: ModelSpec, metric_label: str, context_tag: str = "with_context",
+    contrasts: pl.DataFrame,
+    spec: ModelSpec,
+    metric_label: str,
+    context_tag: str = "with_context",
 ) -> None:
-    print(f"\n{'='*64}")
+    print(f"\n{'=' * 64}")
     print(f"  {metric_label}  —  contrast: {spec.contrast_label}")
     print(f"  Eval: {spec.eval_construction} :: {context_tag}  |  Scope: per-verb")
     if metric_label == "NLL":
@@ -203,13 +205,9 @@ def print_summary(
     else:
         print("  contrast > 0: positive cross-construction generalization")
         print("  contrast < 0: competition / preemption-style effect")
-    print(f"{'='*64}")
+    print(f"{'=' * 64}")
     with pl.Config(tbl_rows=-1):
-        print(
-            contrasts.select(
-                "eval_verb", "estimate", "std.error", "statistic", "p.value"
-            ).sort("eval_verb")
-        )
+        print(contrasts.select("eval_verb", "estimate", "std.error", "statistic", "p.value").sort("eval_verb"))
 
 
 def main() -> None:
@@ -226,24 +224,20 @@ def main() -> None:
     os.chdir(os.environ.get("PWD", "."))
 
     has_context = not args.no_context
-    context_tag = "no-context" if args.no_context else "with-context"
+    context_tag = "no_context" if args.no_context else "with_context"
 
     for spec in MODELS:
         print(f"\nLoading testset data for `{spec.name}` model...")
-        df = load_data(spec, has_context)
+        df = load_data(args.testset_dir, spec, has_context)
         n_verbs = df["eval_verb"].n_unique()
-        print(
-            f"  {len(df):,} rows  |  {n_verbs} verbs  |  "
-            f"conditions: {sorted(df['condition'].unique())}"
-        )
+        print(f"  {len(df):,} rows  |  {n_verbs} verbs  |  conditions: {sorted(df['condition'].unique())}")
 
         for metric_key, (metric_col, metric_label) in METRICS.items():
             contrasts = run_contrast(df, metric_col, spec.ref_level)
             print_summary(contrasts, spec, metric_label, context_tag)
 
             out_path = args.figure_dir / (
-                f"20260514.cross-construction-transfer_{spec.name}"
-                f"_{context_tag}_{metric_key}.pdf"
+                f"20260514.cross-construction-transfer_{spec.name}_{context_tag}_{metric_key}.pdf"
             )
             plot_forest(contrasts, spec, metric_label, out_path, context_tag)
 

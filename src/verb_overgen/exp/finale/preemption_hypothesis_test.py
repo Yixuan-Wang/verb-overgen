@@ -1,8 +1,9 @@
 """Test the original per-verb contrast for the overall preemption effect.
 
 Compares `remove :: p :: per-verb` vs `remove :: e :: per-verb` on
-`transitive :: with_context` at the final training epoch, using a linear
-mixed-effects model (lme4) with per-verb emmeans contrasts.
+`transitive :: with_context` or `transitive :: no_context` at the final
+training epoch, using a linear mixed-effects model (lme4) with per-verb
+emmeans contrasts.
 
 Preemption hypothesis: removing the preempting causatives (p) should increase
 overgeneralization more than removing entrenchment-minus-preemption (e).
@@ -54,15 +55,16 @@ entry <- function(df) {
 }
 """)
 
-def load_data() -> pl.DataFrame:
+
+def load_data(testset_dir: Path, has_context: bool) -> pl.DataFrame:
     df = (
-        pl.scan_parquet(TESTSET_DIR / "*.parquet")
+        pl.scan_parquet(testset_dir / "*.parquet")
         .filter(
             pl.col("run_manipulation") == "remove",
             pl.col("run_scope") == "per-verb",
             pl.col("run_target").is_in(["p", "e"]),
             pl.col("eval_construction") == "transitive",
-            pl.col("eval_has_context"),
+            pl.col("eval_has_context") == has_context,
             pl.col("eval_verb").is_in(VERB_TARGET_10),
             pl.col("eval_verb") == pl.col("run_target_verb"),
             pl.col("ckpt_epoch") == pl.col("ckpt_epoch").max(),
@@ -92,13 +94,9 @@ def run_contrast(df: pl.DataFrame, metric_col: str) -> pl.DataFrame:
 def _verb_order(
     by: pl.Expr,
 ) -> list[str]:
-    stats = pl.read_parquet(VERB_STATS_PATH).filter(
-        pl.col("verb").is_in(VERB_TARGET_10)
-    )
+    stats = pl.read_parquet(VERB_STATS_PATH).filter(pl.col("verb").is_in(VERB_TARGET_10))
     return (
-        stats.with_columns(
-            (pl.col("count_causative") / pl.col("count_verb_like")).alias("causative_ratio")
-        )
+        stats.with_columns((pl.col("count_causative") / pl.col("count_verb_like")).alias("causative_ratio"))
         .sort(by, descending=True)["verb"]
         .to_list()
     )
@@ -109,10 +107,7 @@ def plot_forest(contrasts: pl.DataFrame, metric_label: str, out_path: Path) -> N
 
     fig, ax = plt.subplots(figsize=(7, max(4, len(verbs) * 0.55)))
 
-    ordered_df = (
-        pl.DataFrame({"eval_verb": verbs})
-        .join(contrasts, on="eval_verb", how="left")
-    )
+    ordered_df = pl.DataFrame({"eval_verb": verbs}).join(contrasts, on="eval_verb", how="left")
     x = ordered_df["estimate"].to_numpy()
     xerr = ordered_df["std.error"].to_numpy() * 1.96
 
@@ -145,22 +140,17 @@ def plot_forest(contrasts: pl.DataFrame, metric_label: str, out_path: Path) -> N
     print(f"Figure saved: {out_path}")
 
 
-def print_summary(contrasts: pl.DataFrame, metric_label: str) -> None:
-    print(f"\n{'='*64}")
+def print_summary(contrasts: pl.DataFrame, metric_label: str, context_tag: str) -> None:
+    print(f"\n{'=' * 64}")
     print(f"  {metric_label}  —  contrast: remove::p − remove::e")
-    print("  Eval: transitive :: with_context  |  Scope: per-verb")
+    print(f"  Eval: transitive :: {context_tag}  |  Scope: per-verb")
     if metric_label == "NLL":
         print("  Hypothesis direction: contrast < 0 (preemption reduces overgen.)")
     else:
         print("  Hypothesis direction: contrast > 0 (preemption reduces overgen.)")
-    print(f"{'='*64}")
+    print(f"{'=' * 64}")
     with pl.Config(tbl_rows=-1):
-        print(
-            contrasts.select(
-                "eval_verb", "estimate", "std.error", "statistic", "p.value"
-            )
-            .sort("eval_verb")
-        )
+        print(contrasts.select("eval_verb", "estimate", "std.error", "statistic", "p.value").sort("eval_verb"))
 
 
 def main() -> None:
@@ -177,21 +167,29 @@ def main() -> None:
         default=FIGURE_DIR,
         help="Output directory for PDF figures (default: %(default)s)",
     )
+    parser.add_argument(
+        "--no-context",
+        action="store_true",
+        help="Use no_context eval condition instead of with_context (default: with_context)",
+    )
     args = parser.parse_args()
 
     os.chdir(os.environ.get("PWD", "."))
 
+    has_context = not args.no_context
+    context_tag = "no_context" if args.no_context else "with_context"
+
     print("Loading testset data...")
-    df = load_data()
+    df = load_data(args.testset_dir, has_context)
     n_verbs = df["eval_verb"].n_unique()
     n_rows = len(df)
     print(f"  {n_rows:,} rows  |  {n_verbs} verbs  |  conditions: {sorted(df['run_target'].unique())}")
 
     for metric_key, (metric_col, metric_label) in METRICS.items():
         contrasts = run_contrast(df, metric_col)
-        print_summary(contrasts, metric_label)
-        
-        out_path = args.figure_dir / f"20260511.preemption-hypothesis_per-verb_with-context_{metric_key}.pdf"
+        print_summary(contrasts, metric_label, context_tag)
+
+        out_path = args.figure_dir / f"20260511.preemption-hypothesis_per-verb_{context_tag}_{metric_key}.pdf"
         plot_forest(contrasts, metric_label, out_path)
 
 

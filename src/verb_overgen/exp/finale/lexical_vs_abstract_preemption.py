@@ -6,7 +6,8 @@ preemption contrast is then computed as a difference-in-differences against
 its `e` twin, isolating the preemption-specific effect from the generic
 entrenchment / data-volume effect of removing N verb-instances.
 
-Final-epoch `transitive :: with_context`. DiD contrasts per verb:
+Final-epoch `transitive :: with_context` or `transitive :: no_context`. DiD
+contrasts per verb:
 
   lexical_alone      = (except − all)_p − (except − all)_e
   abstract_alone     = (per    − all)_p − (per    − all)_e
@@ -42,11 +43,11 @@ METRICS: dict[str, tuple[str, str]] = {
 
 # (effect key — must match R contrast names, display label, color)
 CONTRASTS = [
-    ("lexical_alone",      "lexical (alone)",      "#b22222"),
-    ("abstract_alone",     "abstract (alone)",     "#f4a0a0"),
-    ("total",              "total",                "black"),
-    ("lex_given_abstract", "lex | abstract on",    "#1f77b4"),
-    ("abstract_given_lex", "abstract | lex on",    "#2ca02c"),
+    ("lexical_alone", "lexical (alone)", "#b22222"),
+    ("abstract_alone", "abstract (alone)", "#f4a0a0"),
+    ("total", "total", "black"),
+    ("lex_given_abstract", "lex | abstract on", "#1f77b4"),
+    ("abstract_given_lex", "abstract | lex on", "#2ca02c"),
 ]
 
 _R_CONTRAST = RScript("""
@@ -86,13 +87,13 @@ entry <- function(df) {
 """)
 
 
-def load_data() -> pl.DataFrame:
-    src = pl.scan_parquet(TESTSET_DIR / "*.parquet")
+def load_data(testset_dir: Path, has_context: bool) -> pl.DataFrame:
+    src = pl.scan_parquet(testset_dir / "*.parquet")
     final_epoch = pl.col("ckpt_epoch") == pl.col("ckpt_epoch").max()
     common_cols = ["run_seed", "eval_verb", "eval_index_verb_context", "result_nll", "result_slor"]
     common_filter = [
         pl.col("eval_construction") == "transitive",
-        pl.col("eval_has_context"),
+        pl.col("eval_has_context") == has_context,
         pl.col("eval_verb").is_in(VERB_TARGET_10),
         final_epoch,
     ]
@@ -115,11 +116,7 @@ def load_data() -> pl.DataFrame:
             )
         )
 
-    arms = [
-        remove_arm(scope, target)
-        for scope in ("all-verb", "per-verb", "except-verb")
-        for target in ("p", "e")
-    ]
+    arms = [remove_arm(scope, target) for scope in ("all-verb", "per-verb", "except-verb") for target in ("p", "e")]
     return pl.concat([a.collect() for a in arms])
 
 
@@ -134,9 +131,7 @@ def run_contrast(df: pl.DataFrame, metric_col: str) -> pl.DataFrame:
 def _verb_order(by: pl.Expr) -> list[str]:
     stats = pl.read_parquet(VERB_STATS_PATH).filter(pl.col("verb").is_in(VERB_TARGET_10))
     return (
-        stats.with_columns(
-            (pl.col("count_causative") / pl.col("count_verb_like")).alias("causative_ratio")
-        )
+        stats.with_columns((pl.col("count_causative") / pl.col("count_verb_like")).alias("causative_ratio"))
         .sort(by, descending=True)["verb"]
         .to_list()
     )
@@ -158,8 +153,14 @@ def plot_forest(contrasts: pl.DataFrame, metric_label: str, out_path: Path) -> N
         y = np.array([y_pos[v] + (idx - (n_effects - 1) / 2) * dodge for v in verbs])
 
         ax.errorbar(
-            x=x, y=y, xerr=xerr,
-            fmt="o", capsize=3, color=color, markersize=5, linewidth=1.2,
+            x=x,
+            y=y,
+            xerr=xerr,
+            fmt="o",
+            capsize=3,
+            color=color,
+            markersize=5,
+            linewidth=1.2,
             label=effect_label,
         )
 
@@ -168,9 +169,7 @@ def plot_forest(contrasts: pl.DataFrame, metric_label: str, out_path: Path) -> N
     ax.set_yticklabels(verbs)
 
     direction = "↑" if metric_label == "NLL" else "↓"
-    ax.set_xlabel(
-        f"DiD contrast [{metric_label}]  ({direction} = preemption-specific effect beyond entrenchment)"
-    )
+    ax.set_xlabel(f"DiD contrast [{metric_label}]  ({direction} = preemption-specific effect beyond entrenchment)")
     ax.set_ylabel("Verb")
     ax.grid(axis="x", linestyle=":", alpha=0.5)
     ax.legend(title="Effect", bbox_to_anchor=(1.02, 1), loc="upper left", borderaxespad=0)
@@ -182,17 +181,18 @@ def plot_forest(contrasts: pl.DataFrame, metric_label: str, out_path: Path) -> N
     print(f"Figure saved: {out_path}")
 
 
-def print_summary(contrasts: pl.DataFrame, metric_label: str) -> None:
+def print_summary(contrasts: pl.DataFrame, metric_label: str, context_tag: str) -> None:
     direction = "↑" if metric_label == "NLL" else "↓"
-    print(f"\n{'='*64}")
+    print(f"\n{'=' * 64}")
     print(f"  {metric_label}  —  overall preemption effect: lexical/abstract decomposition")
-    print("  Eval: transitive :: with_context")
+    print(f"  Eval: transitive :: {context_tag}")
     print(f"  Direction: {direction} = preemption-specific effect beyond entrenchment")
-    print(f"{'='*64}")
+    print(f"{'=' * 64}")
     with pl.Config(tbl_rows=-1):
         print(
-            contrasts.select("effect", "eval_verb", "estimate", "std.error", "statistic", "adj.p.value")
-            .sort("effect", "eval_verb")
+            contrasts.select("effect", "eval_verb", "estimate", "std.error", "statistic", "adj.p.value").sort(
+                "effect", "eval_verb"
+            )
         )
 
 
@@ -200,19 +200,27 @@ def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--testset-dir", type=Path, default=TESTSET_DIR)
     parser.add_argument("--figure-dir", type=Path, default=FIGURE_DIR)
+    parser.add_argument(
+        "--no-context",
+        action="store_true",
+        help="Use no_context eval condition instead of with_context (default: with_context)",
+    )
     args = parser.parse_args()
 
     os.chdir(os.environ.get("PWD", "."))
 
+    has_context = not args.no_context
+    context_tag = "no_context" if args.no_context else "with_context"
+
     print("Loading testset data...")
-    df = load_data()
+    df = load_data(args.testset_dir, has_context)
     cells = sorted({(s, t) for s, t in zip(df["scope"], df["target"], strict=True)})
     print(f"  {len(df):,} rows  |  {df['eval_verb'].n_unique()} verbs  |  cells: {cells}")
 
     for metric_key, (metric_col, metric_label) in METRICS.items():
         contrasts = run_contrast(df, metric_col)
-        print_summary(contrasts, metric_label)
-        out_path = args.figure_dir / f"20260513.v3.lex-vs-abstract-preemption-did_with-context_{metric_key}.pdf"
+        print_summary(contrasts, metric_label, context_tag)
+        out_path = args.figure_dir / f"20260513.v3.lex-vs-abstract-preemption-did_{context_tag}_{metric_key}.pdf"
         plot_forest(contrasts, metric_label, out_path)
 
 

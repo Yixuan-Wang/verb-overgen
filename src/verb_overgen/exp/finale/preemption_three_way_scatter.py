@@ -92,11 +92,13 @@ def load_data(testset_dir: Path, has_context: bool) -> pl.DataFrame:
         .with_columns(pl.lit("remove::e").alias("condition"))
     )
 
-    return pl.concat([
-        # none.collect(), 
-        remove_p.collect(), 
-        remove_e.collect()
-    ])
+    return pl.concat(
+        [
+            # none.collect(),
+            remove_p.collect(),
+            remove_e.collect(),
+        ]
+    )
 
 
 def aggregate(df: pl.DataFrame, metric_col: str) -> pl.DataFrame:
@@ -129,7 +131,10 @@ def plot_dumbbell(agg: pl.DataFrame, metric_label: str, context_label: str, out_
             ax.plot(
                 [xv, xv],
                 [caus["metric_mean"].values[0], tran["metric_mean"].values[0]],
-                color=color, linewidth=1.5, alpha=0.6, zorder=1,
+                color=color,
+                linewidth=1.5,
+                alpha=0.6,
+                zorder=1,
             )
 
         for construction, marker in MARKERS.items():
@@ -147,8 +152,7 @@ def plot_dumbbell(agg: pl.DataFrame, metric_label: str, context_label: str, out_
     ax.grid(axis="y", linestyle=":", alpha=0.4)
 
     condition_handles = [
-        mlines.Line2D([], [], color=color, marker="o", markersize=6, label=cond)
-        for cond, color in CONDITIONS
+        mlines.Line2D([], [], color=color, marker="o", markersize=6, label=cond) for cond, color in CONDITIONS
     ]
     marker_handles = [
         mlines.Line2D([], [], color="gray", marker=marker, markersize=6, linestyle="none", label=construction)
@@ -156,7 +160,9 @@ def plot_dumbbell(agg: pl.DataFrame, metric_label: str, context_label: str, out_
     ]
     ax.legend(
         handles=condition_handles + marker_handles,
-        bbox_to_anchor=(1.02, 1), loc="upper left", borderaxespad=0,
+        bbox_to_anchor=(1.02, 1),
+        loc="upper left",
+        borderaxespad=0,
     )
     ax.set_title(f"Causative (O) vs Transitive (X) — {context_label}")
     fig.tight_layout()
@@ -189,7 +195,9 @@ def main() -> None:
     for has_context, context_label in context_flags:
         print(f"Loading data ({context_label})...")
         df = load_data(args.testset_dir, has_context)
-        print(f"  {len(df):,} rows  |  {df['eval_verb'].n_unique()} verbs  |  conditions: {sorted(df['condition'].unique())}")
+        print(
+            f"  {len(df):,} rows  |  {df['eval_verb'].n_unique()} verbs  |  conditions: {sorted(df['condition'].unique())}"
+        )
 
         for metric_key, (metric_col, metric_label) in METRICS.items():
             agg = aggregate(df, metric_col)
