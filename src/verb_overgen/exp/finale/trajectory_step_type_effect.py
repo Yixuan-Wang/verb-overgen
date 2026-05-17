@@ -26,7 +26,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 import polars as pl
 
-from verb_overgen.common.features import VERB_TARGET_10
+from verb_overgen.common.features import VERB_TARGET_FINALE
 from verb_overgen.util.r_arrow_bridge import RScript
 
 TRAJECTORY_DIR = Path("var/results/v2/trajectory")
@@ -91,7 +91,7 @@ def load_data(trajectory_dir: Path, bin_size: int, has_context: bool) -> pl.Data
         pl.scan_parquet(str(trajectory_dir / "*.parquet"))
         .filter(
             pl.col("kind") == kind,
-            pl.col("verb").is_in(VERB_TARGET_10),
+            pl.col("verb").is_in(VERB_TARGET_FINALE),
             pl.col("step_effective") > 0,
         )
         .group_by("verb", "step_effective", "index_sentence", "run_name")
@@ -141,7 +141,7 @@ def run_contrast(df: pl.DataFrame) -> pl.DataFrame:
 
 
 def _verb_order(by: pl.Expr) -> list[str]:
-    stats = pl.read_parquet(VERB_STATS_PATH).filter(pl.col("verb").is_in(VERB_TARGET_10))
+    stats = pl.read_parquet(VERB_STATS_PATH).filter(pl.col("verb").is_in(VERB_TARGET_FINALE))
     return (
         stats.with_columns((pl.col("count_causative") / pl.col("count_verb_like")).alias("causative_ratio"))
         .sort(by, descending=True)["verb"]

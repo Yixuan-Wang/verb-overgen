@@ -29,7 +29,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 import polars as pl
 
-from verb_overgen.common.features import VERB_TARGET_10
+from verb_overgen.common.features import VERB_TARGET_FINALE
 from verb_overgen.util.r_arrow_bridge import RScript
 
 TESTSET_DIR = Path("var/results/v2/testset")
@@ -94,7 +94,7 @@ def load_data(testset_dir: Path, has_context: bool) -> pl.DataFrame:
     common_filter = [
         pl.col("eval_construction") == "transitive",
         pl.col("eval_has_context") == has_context,
-        pl.col("eval_verb").is_in(VERB_TARGET_10),
+        pl.col("eval_verb").is_in(VERB_TARGET_FINALE),
         final_epoch,
     ]
 
@@ -129,7 +129,7 @@ def run_contrast(df: pl.DataFrame, metric_col: str) -> pl.DataFrame:
 
 
 def _verb_order(by: pl.Expr) -> list[str]:
-    stats = pl.read_parquet(VERB_STATS_PATH).filter(pl.col("verb").is_in(VERB_TARGET_10))
+    stats = pl.read_parquet(VERB_STATS_PATH).filter(pl.col("verb").is_in(VERB_TARGET_FINALE))
     return (
         stats.with_columns((pl.col("count_causative") / pl.col("count_verb_like")).alias("causative_ratio"))
         .sort(by, descending=True)["verb"]

@@ -78,15 +78,15 @@ For verbs, we have 10 verbs of interest.
 | Verb | Note |
 | --- | --- |
 | laugh | The verb of most interest. |
-| sing | This verb also have heavy transitive usage under a different lexical sense. |
+| ~~sing~~ | ~~This verb also have heavy transitive usage under a different lexical sense.~~ |
 | cry | |
 | sleep | |
 | smile | |
 | go | The most frequent verb in the dataset. |
-| look | |
+| ~~look~~ | ~~Somehow being used heavily as a transitive in the child speech dataset.~~ |
 | sneeze | |
-| blink | A very rare verb in the dataset. Also can be used transitively. |
-| rise | It shouldn't have been used in a periphrastic causative construction. Kept here for comparison. |
+| ~~blink~~ | ~~A very rare verb in the dataset. Also can be used transitively.~~ |
+| ~~rise~~ | ~~It shouldn't have been used in a periphrastic causative construction. Kept here for comparison.~~ |
 
 
 ## Planned Analyses

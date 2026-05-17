@@ -38,3 +38,7 @@ VERB_TARGET_EXTENSION: Final[dict[str, list[str]]] = {
 VERB_TARGET_10: Final[list[str]] = VERB_TARGET_5 + [
     "sneeze", "go", "look", "blink", "rise",
 ]
+
+VERB_TARGET_FINALE: Final[list[str]] = [
+    "go", "laugh", "cry", "sleep", "sneeze", "smile"
+]
