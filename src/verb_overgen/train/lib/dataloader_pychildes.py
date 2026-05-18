@@ -92,6 +92,7 @@ class DatasetPyChildes(Dataset[DataOnePyChildes]):
         max_token_per_batch: int,
         augmentation_sources: Sequence[AugmentationSource] = (),
         augmentation_seed: int | None = None,
+        no_child_speech: bool = False,
     ) -> DatasetPyChildes:
         df, n_main = cls._load_data(
             input_path_main=input_path_main,
@@ -99,6 +100,7 @@ class DatasetPyChildes(Dataset[DataOnePyChildes]):
             max_len=max_len,
             augmentation_sources=augmentation_sources,
             augmentation_seed=augmentation_seed,
+            no_child_speech=no_child_speech,
         )
         return cls(
             df,
@@ -117,9 +119,16 @@ class DatasetPyChildes(Dataset[DataOnePyChildes]):
         max_len: int,
         augmentation_sources: Sequence[AugmentationSource] = (),
         augmentation_seed: int | None = None,
+        no_child_speech: bool = False,
     ):
         lf_main = pl.scan_parquet(input_path_main)
         lf_annotation = pl.scan_parquet(input_path_annotation)
+
+        if no_child_speech:
+            logger.info("Filtering out child speech samples as per `no_child_speech=True`.")
+            if "speaker" not in lf_main.collect_schema().names():
+                raise KeyError("The main dataset must contain a 'speaker' column to filter child speech.")
+            lf_main = lf_main.filter(pl.col("speaker").str.starts_with("CHI").not_())
 
         n_main = int(lf_main.select(pl.len()).collect().item()) # type: ignore
 

@@ -42,6 +42,7 @@ data:
     shuffle: true
     shuffle_seed: null
     max_token_per_batch: 8192
+    no_child_speech: false
     
     subset: full
     subset_seed: null

@@ -300,6 +300,7 @@ class TrainingSession:
             max_token_per_batch=self.cfg.data.train.max_token_per_batch,
             augmentation_sources=augmentation_sources,
             augmentation_seed=subset_seed,
+            no_child_speech=OmegaConf.select(self.cfg, "data.train.no_child_speech", default=False),
         )
 
         if OmegaConf.select(self.cfg, "data.train.debug", default=False):
