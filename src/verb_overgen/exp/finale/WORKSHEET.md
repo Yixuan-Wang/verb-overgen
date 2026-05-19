@@ -21,14 +21,18 @@ Scope:
 - `except-verb`. The manipulation is applied to all verbs *except* a specific target verb, e.g., "laugh".
 - Empty string means not applicable, e.g., for `none` manipulation.
 
-Specifically the scopes form a factorial design:
+The detailed `remove` results of target and scope is as follows.
 
-|   | Lexical Effect | Abstract Effect |
-| --: | :--: | :--: |
-| none | Yes | Yes |
-| per-verb | No | Yes |
-| all-verb | No | No |
-| except-verb | Yes | No |
+✅ means untouched, ❌ means removed, 🔽 in `e` means removed the same size as in corresponding `p` removals.
+
+|     | causative, specific verb | causative, other verbs | other constructions, specific verb | other constructions, other verbs |
+| --: | --- | --- | --- | --- |
+| `p :: per-verb` | ❌ | ✅ | ✅ | ✅ |
+| `e :: per-verb` | ✅ | ✅ | 🔽 | ✅ |
+| `p :: all-verb` | ❌ | ❌ | ✅ | ✅ |
+| `e :: all-verb` | ✅ | ✅ | 🔽 | 🔽 |
+| `p :: except-verb` |  ✅ | ❌ | ✅ | ✅ |
+| `e :: except-verb` | ✅ | ✅ | ✅ | 🔽 |
 
 `none` and `all-verb` are repeated once per seed, `per-verb` and `except-verb` are repeated once per verb per seed.
 We have the same 5 seeds shared across all experiments.
@@ -64,6 +68,7 @@ These conditions (formatted as `manipulation :: target :: scope`) describe how t
 `remove :: e :: all-verb`
 `remove :: p :: except-verb`
 `remove :: e :: except-verb`
+`remove :: p+e :: lexical-only`
 `substitute :: p :: per-verb`
 
 These conditions (formatted as `construction :: context`) describe the test sets used to probe the model's knowledge.
@@ -97,7 +102,6 @@ For verbs, we have 10 verbs of interest.
 - Preemption effect on overgeneralization will always be measured on `transitive`s for the `remove` manipulation, since the transitives are the "overgeneralization" instances.
 - To measure the preemption effect, we will compare `remove :: p` with `remove :: e` on `transitive :: with_context`. If removing preempting instances increases the transitive NLL (or decreases the SLOR)
 than removing entrenchment-minus-preemption instances, then we have evidence for the preemption effect, and it attributes to preemption, not entrenchment.
-
 
 
 

@@ -9,8 +9,8 @@ entrenchment / data-volume effect of removing N verb-instances.
 Final-epoch `transitive :: with_context` or `transitive :: no_context`. DiD
 contrasts per verb:
 
-  lexical_alone      = (except − all)_p − (except − all)_e
-  abstract_alone     = (per    − all)_p − (per    − all)_e
+  contrast_1      = (except − all)_p − (except − all)_e
+  contrast_2     = (per    − all)_p − (per    − all)_e
   total              = all_e − all_p          (`none` cancels in DiD)
   lex_given_abstract = per_e − per_p          (`none` cancels in DiD)
   abstract_given_lex = except_e − except_p    (mirror of lex_given_abstract)
@@ -43,8 +43,8 @@ METRICS: dict[str, tuple[str, str]] = {
 
 # (effect key — must match R contrast names, display label, color)
 CONTRASTS = [
-    ("lexical_alone", "lexical (alone)", "#b22222"),
-    ("abstract_alone", "abstract (alone)", "#f4a0a0"),
+    ("contrast_1", "contrast 1", "#b22222"),
+    ("contrast_2", "contrast 2", "#f4a0a0"),
     ("total", "total", "black"),
     ("lex_given_abstract", "lex | abstract on", "#1f77b4"),
     ("abstract_given_lex", "abstract | lex on", "#2ca02c"),
@@ -76,8 +76,8 @@ entry <- function(df) {
     model |>
         emmeans(~ cell | eval_verb) |>
         contrast(method = list(
-            lexical_alone      = c(-1, +1,  0,  0, +1, -1),
-            abstract_alone     = c(-1, +1, +1, -1,  0,  0),
+            contrast_1      = c(-1, +1,  0,  0, +1, -1),
+            contrast_2     = c(-1, +1, +1, -1,  0,  0),
             total              = c(-1, +1,  0,  0,  0,  0),
             lex_given_abstract = c( 0,  0, -1, +1,  0,  0),
             abstract_given_lex = c( 0,  0,  0,  0, -1, +1)
