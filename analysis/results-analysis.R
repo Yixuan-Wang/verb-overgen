@@ -28,6 +28,10 @@ results <- read_csv("data/exp-results-20260516.csv") %>%
     )
   )
 
+results %>%
+  distinct(eval_verb, eval_index_sentence, eval_index_verb_context, eval_has_context, eval_construction) %>%
+  write_csv("data/eval-metadata.csv")
+
 full <- results %>%
   filter(is_full==TRUE) %>%
   select(-is_full)
