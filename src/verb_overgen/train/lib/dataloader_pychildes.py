@@ -598,6 +598,8 @@ def _remove_entrenchment_by_verb_counts(
         verb_counts: A DataFrame with columns ``verb`` (str) and ``count`` (int).
     """
     for verb, count in zip(verb_counts["verb"], verb_counts["count"]):
+        # NOTE: `generator=randgen` is intentionally omitted — this draws from the
+        # global RNG. Load-bearing for reproducibility with prior runs; do not "fix".
         seed = torch.randint(0, 1_000_000, (1,)).item() if randgen else None
         df_entrenched = dataset.dataframe.filter(
             pl.col("featured_verbs").list.eval(
@@ -711,6 +713,26 @@ def remove_entrenchment_except_verb(dataset: DatasetPyChildes, *, verb: str | It
     )
 
     _remove_entrenchment_by_verb_counts(dataset, df_causative_count, randgen=randgen)
+
+def remove_entrenchment_on_verb_no_abstract(
+    dataset: DatasetPyChildes,
+    *,
+    verb: str | Iterable[str],
+    randgen: torch.Generator | None,
+):
+    """Implements `e :: per-verb-no-abstract`: combines `p :: except-verb` with `e :: per-verb`.
+
+    Removes causatives for all verbs other than `verb` (ablating abstract preemption),
+    then removes a matched amount of non-preemption entrenchment for `verb` itself. The
+    only preemption signal remaining is the lexical preemption for `verb`.
+
+    Usage:
+        ```python
+        remove_entrenchment_on_verb_no_abstract(dataset, verb="laugh", randgen=torch.Generator().manual_seed(42))
+        ```
+    """
+    remove_preemption_except_verb(dataset, verb=verb)
+    remove_entrenchment_on_verb(dataset, verb=verb, randgen=randgen)
 
 def remove_token(dataset: DatasetPyChildes, token_id: int, *, sample_frac: float = 1.0, seed: int | None = None):
     """

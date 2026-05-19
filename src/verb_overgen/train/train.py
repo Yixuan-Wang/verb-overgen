@@ -26,7 +26,7 @@ from verb_overgen.common.tokenize import BOS_TOKEN, PAD_TOKEN
 # from verb_overgen.train.lib.dataloader_scamp import DatasetScamp, EvalScampCallback
 from verb_overgen.train.lib.dataloader_overgen import DatasetOvergen, EvalOvergenCallback, EvalOvergenMonitor
 from verb_overgen.train.lib.monitor_step import MonitorStepEffect
-from verb_overgen.train.lib.dataloader_pychildes import AugmentationSource, DataBatchPyChildes, DatasetPyChildes, TrainTokenMonitor, remove_entrenchment, remove_entrenchment_on_verb, remove_entrenchment_except_verb, remove_preemption, remove_preemption_on_verb, remove_preemption_except_verb, remove_token, substitute_on_verb
+from verb_overgen.train.lib.dataloader_pychildes import AugmentationSource, DataBatchPyChildes, DatasetPyChildes, TrainTokenMonitor, remove_entrenchment, remove_entrenchment_on_verb, remove_entrenchment_on_verb_no_abstract, remove_entrenchment_except_verb, remove_preemption, remove_preemption_on_verb, remove_preemption_except_verb, remove_token, substitute_on_verb
 from verb_overgen.train.lib.utils import CacheCleanCallback
 from verb_overgen.train.lib.validate import eval_input_token_prob, VERB_TARGET_5
 from verb_overgen.util.misc_util import ensure_dir
@@ -337,6 +337,12 @@ class TrainingSession:
                 if subset_seed is not None:
                     randgen.manual_seed(subset_seed)
                 remove_entrenchment_except_verb(self.dataset_train, verb=subset_verb, randgen=randgen)
+            case "remove_entrenchment_on_verb_no_abstract":
+                subset_verb = self.cfg.data.train.subset_verb_of_interest
+                randgen = torch.Generator()
+                if subset_seed is not None:
+                    randgen.manual_seed(subset_seed)
+                remove_entrenchment_on_verb_no_abstract(self.dataset_train, verb=subset_verb, randgen=randgen)
             case "substitute_preemption_on_verb":
                 subset_verb = self.cfg.data.train.subset_verb_of_interest
                 df_sub = pl.concat(

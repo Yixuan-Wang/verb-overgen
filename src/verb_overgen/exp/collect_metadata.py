@@ -12,6 +12,8 @@ from omegaconf import OmegaConf
 os.environ["WANDB_ENTITY"] = "tom-yx_wang"
 os.environ["WANDB_PROJECT"] = "25-verb-overgen"
 
+SCOPES_WITH_TARGET_VERB: Final[set[str]] = {"per-verb", "except-verb", "per-verb-no-abstract"}
+
 MAP_INTERNAL_SUBSET_TO_CONDITION: Final[dict[str, dict[str, str]]] = {
     "full": {
         "manipulation": "none",
@@ -48,6 +50,11 @@ MAP_INTERNAL_SUBSET_TO_CONDITION: Final[dict[str, dict[str, str]]] = {
         "scope": "except-verb",
         "target": "e",
     },
+    "remove_entrenchment_on_verb_no_abstract": {
+        "manipulation": "remove",
+        "scope": "per-verb-no-abstract",
+        "target": "e",
+    },
     "substitute_preemption_on_verb": {
         "manipulation": "substitute",
         "scope": "per-verb",
@@ -79,7 +86,7 @@ def get_metadata(
     else:
         metadata_seed = cfg.seed
 
-    if force_include_target_verb or MAP_INTERNAL_SUBSET_TO_CONDITION[metadata_subset]["scope"] in {"per-verb", "except-verb"}:
+    if force_include_target_verb or MAP_INTERNAL_SUBSET_TO_CONDITION[metadata_subset]["scope"] in SCOPES_WITH_TARGET_VERB:
         metadata_target_verb: str = cfg.data_config.train.subset_verb_of_interest
     else:
         metadata_target_verb = ""
