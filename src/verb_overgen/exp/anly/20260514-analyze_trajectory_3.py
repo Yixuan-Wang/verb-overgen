@@ -58,7 +58,7 @@ def _():
 @app.cell
 def _(dataset_step):
     dataset_step_verb: pl.DataFrame = (  # type: ignore
-        dataset_step.filter(pl.col("verb") == "go").collect()
+        dataset_step.filter(pl.col("verb") == "laugh").collect()
     )
     dataset_step_verb
     return (dataset_step_verb,)
@@ -89,6 +89,44 @@ def _(dataset_step_verb: pl.DataFrame, dataset_testset_info):
 
     dataset_step_verb_diff
     return (dataset_step_verb_diff,)
+
+
+@app.cell
+def _(dataset_step_verb_diff):
+    dataset_step_verb_diff_on_preemptive = dataset_step_verb_diff.filter(
+        pl.col("step_type") == "causative",
+        pl.col("kind").str.starts_with("sentence_context_"),
+    ).group_by(
+        "run_name", "step_effective", "verb", "index_verb_context"
+    ).agg(
+        pl.col("run_seed").unique().item(),
+        pl.col("nll_diff").filter(pl.col("kind") == "sentence_context_transitive").item().alias("nll_diff_transitive"),
+        pl.col("nll_diff").filter(pl.col("kind") == "sentence_context_causative").item().alias("nll_diff_causative"),
+    ).sort(
+        "run_name", "step_effective", "verb", "index_verb_context"
+    )
+    return (dataset_step_verb_diff_on_preemptive,)
+
+
+@app.cell
+def _(dataset_step_verb_diff_on_preemptive):
+    _ax = sns.scatterplot(
+        (_df := dataset_step_verb_diff_on_preemptive.filter(
+            pl.col("index_verb_context") == 0,
+            pl.col("run_seed") == 559,
+        )),
+        x="nll_diff_causative",
+        y="nll_diff_transitive",
+        hue="step_effective",
+    )
+
+    _ax.axhline(0, linestyle=":", color="grey")
+    _ax.axvline(0, linestyle=":", color="grey")
+
+    plt.savefig("var/figures/20260519.demo.trajectory_eval_loss_change_on_preemptive.pdf")
+
+    _ax
+    return
 
 
 @app.cell
