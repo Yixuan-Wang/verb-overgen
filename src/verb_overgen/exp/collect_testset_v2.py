@@ -41,6 +41,32 @@ def get_test_data_path(run_name: str) -> list[Path]:
     return matches
 
 
+def get_dataset_name(metadata: dict) -> str:
+    parts = [metadata["manipulation"]]
+    if metadata["scope"]:
+        parts.append(metadata["scope"])
+    if metadata["target"]:
+        parts.append(metadata["target"])
+    if metadata["target_verb"]:
+        parts.append(f"target-{metadata['target_verb']}")
+    parts.append(f"seed-{metadata['seed']}")
+    return "_".join(parts)
+
+
+def load_existing_metadata(jsonl_path: Path) -> tuple[set[str], set[str]]:
+    existing_run_ids = set()
+    existing_paths = set()
+    if not jsonl_path.exists():
+        return existing_run_ids, existing_paths
+
+    with jsonl_path.open() as f:
+        for line in f:
+            entry = json.loads(line)
+            existing_run_ids.add(entry["internal"]["run_id_wandb"])
+            existing_paths.add(entry["path"])
+    return existing_run_ids, existing_paths
+
+
 def main() -> None:
     import argparse
 
@@ -48,6 +74,7 @@ def main() -> None:
     parser.add_argument("tags", nargs="+", help="WandB tags to filter runs by (matched with $in)")
     parser.add_argument("--output-dir", required=True, help="Directory to save extracted datasets")
     parser.add_argument("--unigram-dir", required=True, help="Directory containing per-run unigram parquets and metadata.jsonl (from collect_unigram.py)")
+    parser.add_argument("--append", action="store_true", help="Append new runs to an existing output directory instead of replacing metadata.jsonl.")
     args = parser.parse_args()
 
     output_dir = Path(args.output_dir)
@@ -66,7 +93,9 @@ def main() -> None:
     runs = api.runs("tom-yx_wang/25-verb-overgen", filters={"tags": {"$in": args.tags}})
 
     jsonl_path = output_dir / "metadata.jsonl"
-    with jsonl_path.open("w") as jsonl_file:
+    existing_run_ids, existing_paths = load_existing_metadata(jsonl_path) if args.append else (set(), set())
+    jsonl_mode = "a" if args.append else "w"
+    with jsonl_path.open(jsonl_mode) as jsonl_file:
         for run in runs:
             metadata = get_metadata(run, force_include_target_verb=True)
             if metadata is None:
@@ -77,6 +106,19 @@ def main() -> None:
                 continue
 
             run_name = metadata["internal"]["run_name"]
+            run_id = metadata["internal"]["run_id_wandb"]
+            if args.append and run_id in existing_run_ids:
+                logger.info(f"[skip] {run_name}: already collected")
+                continue
+
+            dataset_name = get_dataset_name(metadata)
+            save_path = (output_dir / dataset_name).with_suffix(".parquet")
+            rel_path = save_path.relative_to(output_dir)
+            if args.append and str(rel_path) in existing_paths:
+                raise FileExistsError(f"Refusing to overwrite existing parquet path in append mode: {rel_path}")
+            if args.append and save_path.exists():
+                raise FileExistsError(f"Refusing to overwrite existing parquet file in append mode: {save_path}")
+
             try:
                 test_paths = get_test_data_path(run_name)
             except FileNotFoundError as e:
@@ -129,24 +171,15 @@ def main() -> None:
                 pl.col("slor").alias("result_slor"),
             )
 
-            parts = [metadata["manipulation"]]
-            if metadata["scope"]:
-                parts.append(metadata["scope"])
-            if metadata["target"]:
-                parts.append(metadata["target"])
-            if metadata["target_verb"]:
-                parts.append(f"target-{metadata['target_verb']}")
-            parts.append(f"seed-{metadata['seed']}")
-            dataset_name = "_".join(parts)
-
-            save_path = (output_dir / dataset_name).with_suffix(".parquet")
-            rel_path = save_path.relative_to(output_dir)
             metadata_with_path = {**metadata, "path": str(rel_path)}
 
             save_path.parent.mkdir(parents=True, exist_ok=True)
             dataset.write_parquet(save_path)
 
             jsonl_file.write(json.dumps(metadata_with_path) + "\n")
+            if args.append:
+                existing_run_ids.add(run_id)
+                existing_paths.add(str(rel_path))
             logger.info(f"[saved] {run_name} -> {save_path}")
 
 
