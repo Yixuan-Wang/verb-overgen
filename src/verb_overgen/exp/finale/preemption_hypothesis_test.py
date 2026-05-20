@@ -7,9 +7,9 @@ emmeans contrasts.
 
 Preemption hypothesis: removing the preempting causatives (p) should increase
 overgeneralization more than removing entrenchment-minus-preemption (e).
-Expected direction of the contrast (remove::p − remove::e):
-  NLL  < 0  (lower NLL = model assigns higher prob to ungrammatical transitives)
-  SLOR > 0  (higher SLOR = model considers transitives more grammatical)
+Expected direction of the contrast (remove::e − remove::p):
+  NLL  > 0  (higher NLL = p model assigns more prob to ungrammatical transitives)
+  SLOR < 0  (lower SLOR = p model considers transitives more grammatical)
 """
 
 import argparse
@@ -49,7 +49,7 @@ entry <- function(df) {
     )
 
     model |>
-        emmeans(revpairwise ~ run_target | eval_verb) |>
+        emmeans(pairwise ~ run_target | eval_verb) |>
         (\(x) x$contrasts)() |>
         tidy()
 }
@@ -126,10 +126,10 @@ def plot_forest(contrasts: pl.DataFrame, metric_label: str, out_path: Path) -> N
     ax.set_yticklabels(verbs)
 
     if metric_label == "NLL":
-        arrow_better = "↓"
-    else:
         arrow_better = "↑"
-    ax.set_xlabel(f"Contrast (remove::p − remove::e){arrow_better} [{metric_label}]")
+    else:
+        arrow_better = "↓"
+    ax.set_xlabel(f"Contrast (remove::e − remove::p){arrow_better} [{metric_label}]")
     ax.set_ylabel("Verb")
     ax.grid(axis="x", linestyle=":", alpha=0.5)
     plt.tight_layout()
@@ -142,12 +142,12 @@ def plot_forest(contrasts: pl.DataFrame, metric_label: str, out_path: Path) -> N
 
 def print_summary(contrasts: pl.DataFrame, metric_label: str, context_tag: str) -> None:
     print(f"\n{'=' * 64}")
-    print(f"  {metric_label}  —  contrast: remove::p − remove::e")
+    print(f"  {metric_label}  —  contrast: remove::e − remove::p")
     print(f"  Eval: transitive :: {context_tag}  |  Scope: per-verb")
     if metric_label == "NLL":
-        print("  Hypothesis direction: contrast < 0 (preemption reduces overgen.)")
-    else:
         print("  Hypothesis direction: contrast > 0 (preemption reduces overgen.)")
+    else:
+        print("  Hypothesis direction: contrast < 0 (preemption reduces overgen.)")
     print(f"{'=' * 64}")
     with pl.Config(tbl_rows=-1):
         print(contrasts.select("eval_verb", "estimate", "std.error", "statistic", "p.value").sort("eval_verb"))
