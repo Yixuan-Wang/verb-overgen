@@ -68,6 +68,7 @@ verb_wise_diffs <- results_dump %>%
 
 
 verb_wise_diffs %>%
+  # filter(run_seed == 706) %>%
   # group_by(verb, diff_type) %>%
   # # 3. Calculate the rolling average of the mean difference
   # mutate(
@@ -95,18 +96,25 @@ verb_wise_diffs %>%
   geom_hline(yintercept = 0, linetype = "dashed") +
   geom_smooth(linewidth = 0.7, alpha = 0.4, color = "#7DA78C") +
   scale_alpha_identity() +
-  facet_wrap(~verb, scales = "free") +
-  scale_x_continuous(labels = scales::label_number(scale = 1e-3, suffix = "k")) +
-  theme_classic(base_size = 16) +
+  facet_wrap(~verb, scales = "free", nrow = 1) +
+  # scale_x_continuous(labels = scales::label_number(scale = 1e-3, suffix = "k")) +
+  scale_x_continuous(
+    labels = \(x) ifelse(x == 0, "0", label_number(scale = 1e-3, suffix = "k")(x)),
+    limits = c(0, 12000),
+    breaks = c(0, 3000, 6000, 9000, 12000)
+  ) +
+  theme_classic(base_size = 16, base_family = "Times") +
   theme(
     strip.background = element_blank(),
     axis.title.y = element_markdown(),
-    strip.text.x = element_text(face = "bold")
+    strip.text.x = element_text(face = "bold.italic")
   ) +
   labs(
-    x = "Step",
+    x = "Training Step",
     y = "Surprisal &Delta;<br>(transitive - causative)"
   )
+
+ggsave("figures/precondition-exp-surprisal-diff.pdf", width = 13.90, height = 2.73, dpi=300, device = cairo_pdf)
 
 verb_wise_diffs %>%
   # group_by(verb, diff_type) %>%
