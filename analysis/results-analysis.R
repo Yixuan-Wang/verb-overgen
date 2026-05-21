@@ -42,6 +42,10 @@ manipulation <- results %>%
   filter(is_full==FALSE) %>%
   select(-is_full)
 
+full %>%
+  filter(eval_verb %in% verbs) %>%
+  pivot_longer(result_nll:result_slor, names_to = "score_type", values_to = "score") %>%
+  select(-eval_index_sentence, -experiment, -run_name)
 
 manip_diffs_long <- manipulation %>%
   filter(run_manipulation == "remove", run_scope != "except-verb") %>%
@@ -49,6 +53,26 @@ manip_diffs_long <- manipulation %>%
   pivot_longer(result_nll:result_slor, names_to = "score_type", values_to = "score") %>%
   select(-eval_index_sentence, -experiment, -run_name) %>%
   filter((eval_verb == run_target_verb) | (run_target_verb == 'all'))
+
+manip_diffs_long %>%
+  pivot_wider(names_from = run_target, values_from = score) %>%
+  inner_join(full %>%
+               filter(eval_verb %in% verbs) %>%
+               pivot_longer(result_nll:result_slor, names_to = "score_type", values_to = "score") %>%
+               select(-eval_index_sentence, -experiment, -run_name, -run_manipulation,
+                      -run_scope, -run_target, -run_target_verb) %>%
+               rename(full = score)
+             ) %>%
+  pivot_longer(e:full, names_to = "exp", values_to = "score") %>%
+  group_by(run_scope, eval_has_context, eval_verb, eval_construction, score_type, exp) %>%
+  summarize(
+    n = n(),
+    std = sd(score),
+    cb = qt(1 - (0.05/2), n - 1) * std/sqrt(n),
+    score = mean(score)
+  ) %>% View()
+
+
 
 manip_diffs_long
 
@@ -65,7 +89,10 @@ fit_all <- lmer(score ~ run_target * eval_verb + (1 | run_seed:eval_verb:eval_in
 
 summary(fit_all)
 
-emmeans(fit_all, pairwise ~ run_target | eval_verb, adjust = "bonferroni")
+emmeans(fit_all, pairwise ~ run_target | eval_verb) %>%
+  confint()
+
+
 # emmeans(fit_all, specs = ~run_target | eval_verb) %>%
 #   contrast("pairwise") %>%
 #   confint()
@@ -93,8 +120,8 @@ manip_diffs %>%
   ggplot(aes(eval_verb, diff, color = run_scope)) +
   geom_point(position = position_dodge(0.5)) +
   geom_linerange(aes(ymin=diff-cb, ymax=diff+cb), position = position_dodge(0.5)) +
-  facet_grid(eval_construction~eval_has_context) +
-  scale_y_continuous(limits = c(-0.2, 0.15))
+  facet_wrap(~eval_has_context) +
+  scale_y_continuous(limits = c(-0.22, 0.15))
 
 agg <- results %>%
   filter(run_target_verb %in% verbs) %>%

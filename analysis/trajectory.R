@@ -159,13 +159,13 @@ verb_wise_diffs %>%
 
 
 moments_raw <- results_dump %>%
-  # group_by(run_seed, verb, step_type, kind, index_sentence) %>%
-  # mutate(relative_step = row_number(step_effective)) %>%
-  # ungroup() %>% View()
-  # select(-step) %>%
+  group_by(run_seed, verb, step_type, kind, index_sentence, phase) %>%
+  mutate(relative_step = row_number(step_effective)) %>%
+  ungroup() %>% 
+  select(-step, -step_effective) %>%
   pivot_wider(names_from = phase, values_from = nll_last_sentence) %>%
   mutate(
-    prepost = post - pre # we expect this to be positive -- i.e., surprisal before 
+    prepost = (post - pre) # we expect this to be positive -- i.e., surprisal before 
   ) 
 
 moments <- moments_raw %>%
@@ -193,8 +193,9 @@ moment_corr <- moments %>%
 moment_corr %>%
   ggplot(aes(verb, estimate)) +
   # geom_jitter(alpha = 0.2, width = 0.2)
-  stat_gradientinterval(fill = "steelblue",.width = 0.95) +
-  theme_classic()
+  # stat_gradientinterval(fill = "steelblue") +
+  stat_halfeye(fill = "steelblue") +
+  theme_classic(base_size = 16)
   # geom_pointrange()
 
 moment_corr %>%
@@ -216,7 +217,8 @@ moment_corr %>%
   theme_classic()
 
 moments_agg <- moments_raw %>%
-  group_by(verb, kind, step_type, epoch) %>%
+  filter(run_seed == 189) %>%
+  group_by(verb, kind, step_type, relative_step) %>%
   summarize(
     n = n(),
     sd = sd(prepost),
@@ -225,16 +227,62 @@ moments_agg <- moments_raw %>%
     pref = mean(prepost > 0)
   ) 
 
+moments_raw %>%
+  filter(kind %in% c("sentence_transitive", "sentence_causative")) %>%
+  mutate(
+    diff = post-pre
+  ) %>%
+  inner_join(eval_metadata) %>%
+  select(-index_sentence, -pre, -post, -prepost, -eval_construction) %>%
+  pivot_wider(names_from = kind, values_from = diff) %>%
+  group_by(verb, run_seed, step_type, relative_step) %>%
+  summarize(
+    transitive = mean(sentence_transitive),
+    causative = mean(sentence_causative)
+  ) %>%
+  ungroup() %>%
+  group_by(verb, run_seed) %>%
+  summarize(
+    n = n(),
+    correlation = cor(transitive, causative, method = "spearman"),
+    agreement = mean(sign(transitive) == sign(causative))
+  ) %>%
+  ggplot(aes(verb, agreement)) +
+  geom_point(size = 2, alpha = 0.4, position = position_jitter(width = 0.2, seed = 1024)) +
+  scale_y_continuous(limits = c(0, 1)) +
+  theme_classic(base_size = 16)
+
+moments_raw %>%
+  # filter(run_seed == 189) %>%
+  inner_join(eval_metadata) %>%
+  select(-index_sentence, -eval_construction, -eval_has_context, -pre, -post) %>%
+  # group_by(verb, step_type, epoch, kind, run_seed) %>%
+  # summarise(prepost = mean(prepost), nn = n(), .groups="drop") %>%
+  group_by(verb, epoch, kind, step_type) %>%
+  summarize(
+    n = n(),
+    sd = sd(prepost),
+    cb = qt(1 - (0.05/2), n - 1) * sd/sqrt(n),
+    diff = mean(prepost),
+    pref = mean(prepost > 0)
+  ) %>% 
+  ungroup() %>%
+  filter(kind == "sentence_transitive") %>%
+  ggplot(aes(verb, diff, shape = step_type, color = epoch)) +
+  geom_point(position = position_dodge(0.5)) +
+  geom_linerange(aes(ymin = diff-cb, ymax = diff+cb), position = position_dodge(0.5))
+
 moments_agg %>%
   filter(kind == "sentence_context_transitive") %>%
-  ggplot(aes(epoch, diff, color = step_type)) +
-  geom_point() +
+  ggplot(aes(relative_step, diff, color = step_type)) +
+  geom_line() +
+  # geom_point() +
   geom_linerange(aes(ymin = diff - cb, ymax = diff+cb)) +
-  facet_wrap(~verb)
+  facet_wrap(~verb, scales="free")
 
 
 moments_agg %>% 
-  filter(kind == "sentence_transitive") %>% View()
+  filter(kind == "sentence_transitive") %>%
   ggplot(aes(step_effective, diff, color = step_type)) +
   geom_point() +
   facet_wrap(~verb)
