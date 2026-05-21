@@ -1,4 +1,6 @@
 library(tidyverse)
+library(lmerTest)
+library(emmeans)
 
 verbs <- c("laugh", "cry", "go", "sleep", "sneeze", "smile", "all")
 
@@ -11,8 +13,8 @@ results <- read_csv("data/exp-results-20260516.csv") %>%
     is_full = run_manipulation == "none",
     experiment = case_when(
       is_full == TRUE ~ "Full",
-      run_target == 'e' ~ "Control",
-      run_target == 'p' ~ "Preemption-removed"
+      run_target == 'e' ~ "keep-p",
+      run_target == 'p' ~ "remove-p"
     ),
     run_scope = case_when(
       is.na(run_scope) ~ "none",
@@ -39,6 +41,60 @@ full <- results %>%
 manipulation <- results %>%
   filter(is_full==FALSE) %>%
   select(-is_full)
+
+
+manip_diffs_long <- manipulation %>%
+  filter(run_manipulation == "remove", run_scope != "except-verb") %>%
+  filter(eval_verb %in% verbs, run_target_verb %in% verbs) %>%
+  pivot_longer(result_nll:result_slor, names_to = "score_type", values_to = "score") %>%
+  select(-eval_index_sentence, -experiment, -run_name) %>%
+  filter((eval_verb == run_target_verb) | (run_target_verb == 'all'))
+
+manip_diffs_long
+
+fit_all <- lmer(score ~ run_target * eval_verb + (1 | run_seed:eval_verb:eval_index_verb_context),
+            data = manip_diffs_long %>% 
+              filter(eval_construction=="transitive", score_type == "result_nll") %>%
+              filter(run_scope == "per-verb", eval_has_context==FALSE) %>%
+              mutate(
+                run_target = factor(run_target),
+                run_seed = factor(run_seed),
+                eval_verb = factor(eval_verb)
+              )
+            )
+
+summary(fit_all)
+
+emmeans(fit_all, pairwise ~ run_target | eval_verb, adjust = "bonferroni")
+# emmeans(fit_all, specs = ~run_target | eval_verb) %>%
+#   contrast("pairwise") %>%
+#   confint()
+
+manip_diffs <- manip_diffs_long %>%
+  pivot_wider(names_from = run_target, values_from = score) %>% 
+  mutate(
+    diff = e - p
+  )
+
+
+manip_diffs %>%
+  filter(eval_construction=="transitive", score_type == "result_nll") %>%
+  group_by(run_scope, eval_has_context, eval_verb, eval_construction, score_type) %>%
+  summarize(
+    n = n(),
+    std = sd(diff),
+    cb = qt(1 - (0.05/2), n - 1) * std/sqrt(n),
+    diff = mean(diff)
+  ) %>% 
+  ungroup() %>%
+  mutate(
+    eval_verb = factor(eval_verb, levels = c("smile", "sneeze", "sleep", "cry", "laugh", "go"))
+  ) %>%
+  ggplot(aes(eval_verb, diff, color = run_scope)) +
+  geom_point(position = position_dodge(0.5)) +
+  geom_linerange(aes(ymin=diff-cb, ymax=diff+cb), position = position_dodge(0.5)) +
+  facet_grid(eval_construction~eval_has_context) +
+  scale_y_continuous(limits = c(-0.2, 0.15))
 
 agg <- results %>%
   filter(run_target_verb %in% verbs) %>%
