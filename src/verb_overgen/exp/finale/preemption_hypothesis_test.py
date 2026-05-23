@@ -27,6 +27,23 @@ TESTSET_DIR = Path("var/results/v2/testset")
 VERB_STATS_PATH = Path("var/results/verb_stats.parquet")
 FIGURE_DIR = Path("var/figures")
 
+# ACL figure style (acl.sty two-column layout)
+ACL_COL_WIDTH = 3.18  # \columnwidth, inches
+
+plt.rcParams.update({
+    "text.usetex": True,
+    "text.latex.preamble": r"\usepackage{mathptmx}",
+    "font.family": "serif",
+    "font.size": 9,
+    "axes.labelsize": 9,
+    "axes.titlesize": 9,
+    "xtick.labelsize": 8,
+    "ytick.labelsize": 8,
+    "legend.fontsize": 8,
+    "pdf.fonttype": 42,
+    "ps.fonttype": 42,
+})
+
 METRICS: dict[str, tuple[str, str]] = {
     "nll": ("result_nll", "NLL"),
     "slor": ("result_slor", "SLOR"),
@@ -105,7 +122,8 @@ def _verb_order(
 def plot_forest(contrasts: pl.DataFrame, metric_label: str, out_path: Path) -> None:
     verbs = _verb_order(pl.col("count_causative"))
 
-    fig, ax = plt.subplots(figsize=(7, max(4, len(verbs) * 0.55)))
+    height = max(2.2, len(verbs) * 0.28)
+    fig, ax = plt.subplots(figsize=(ACL_COL_WIDTH, height))
 
     ordered_df = pl.DataFrame({"eval_verb": verbs}).join(contrasts, on="eval_verb", how="left")
     x = ordered_df["estimate"].to_numpy()
@@ -116,21 +134,24 @@ def plot_forest(contrasts: pl.DataFrame, metric_label: str, out_path: Path) -> N
         y=list(range(len(verbs))),
         xerr=xerr,
         fmt="o",
-        capsize=4,
+        capsize=2,
         color="black",
-        markersize=6,
-        linewidth=1.5,
+        markersize=3,
+        linewidth=1,
     )
     ax.axvline(0, color="black", linestyle="--", linewidth=1, alpha=0.7)
     ax.set_yticks(range(len(verbs)))
     ax.set_yticklabels(verbs)
 
-    if metric_label == "NLL":
-        arrow_better = "↑"
-    else:
-        arrow_better = "↓"
-    ax.set_xlabel(f"Contrast (remove::e − remove::p){arrow_better} [{metric_label}]")
+    arrow_better = r"$\uparrow$" if metric_label == "NLL" else r"$\downarrow$"
+    ax.set_xlabel(
+        rf"{metric_label} Contrast (\textsc{{keep-p}} $-$ \textsc{{remove-p}}) {arrow_better}"
+    )
     ax.set_ylabel("Verb")
+    if metric_label == "NLL":
+        ticks = [-0.20, -0.15, -0.10, -0.05, 0.00, 0.05, 0.10]
+        ax.set_xticks(ticks)
+        ax.set_xlim(ticks[0] - 0.02, ticks[-1] + 0.02)
     ax.grid(axis="x", linestyle=":", alpha=0.5)
     plt.tight_layout()
 

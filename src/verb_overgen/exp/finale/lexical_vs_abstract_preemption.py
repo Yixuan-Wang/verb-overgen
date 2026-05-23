@@ -9,8 +9,6 @@ entrenchment / data-volume effect of removing N verb-instances.
 Final-epoch `transitive :: with_context` or `transitive :: no_context`. DiD
 contrasts per verb:
 
-  contrast_1      = (except − all)_p − (except − all)_e
-  contrast_2     = (per    − all)_p − (per    − all)_e
   total              = all_e − all_p          (`none` cancels in DiD)
   lex_given_abstract = per_e − per_p          (`none` cancels in DiD)
   abstract_given_lex = except_e − except_p    (mirror of lex_given_abstract)
@@ -36,6 +34,23 @@ TESTSET_DIR = Path("var/results/v2/testset")
 VERB_STATS_PATH = Path("var/results/verb_stats.parquet")
 FIGURE_DIR = Path("var/figures")
 
+# ACL figure style (acl.sty two-column layout)
+ACL_COL_WIDTH = 3.18  # \columnwidth, inches
+
+plt.rcParams.update({
+    "text.usetex": True,
+    "text.latex.preamble": r"\usepackage{mathptmx}",
+    "font.family": "serif",
+    "font.size": 9,
+    "axes.labelsize": 9,
+    "axes.titlesize": 9,
+    "xtick.labelsize": 8,
+    "ytick.labelsize": 8,
+    "legend.fontsize": 8,
+    "pdf.fonttype": 42,
+    "ps.fonttype": 42,
+})
+
 METRICS: dict[str, tuple[str, str]] = {
     "nll": ("result_nll", "NLL"),
     "slor": ("result_slor", "SLOR"),
@@ -43,11 +58,11 @@ METRICS: dict[str, tuple[str, str]] = {
 
 # (effect key — must match R contrast names, display label, color)
 CONTRASTS = [
-    ("contrast_1", "contrast 1", "#b22222"),
-    ("contrast_2", "contrast 2", "#f4a0a0"),
-    ("total", "total", "black"),
-    ("lex_given_abstract", "lex | abstract on", "#1f77b4"),
-    ("abstract_given_lex", "abstract | lex on", "#2ca02c"),
+    # ("contrast_1", "contrast 1", "#b22222", "s"),
+    # ("contrast_2", "contrast 2", "#f4a0a0", "D"),
+    ("total", "Total", "black", "o"),
+    ("lex_given_abstract", "Lexical", "#1f77b4", "s"),
+    ("abstract_given_lex", "Abstract", "#2ca02c", "^"),
 ]
 
 _R_CONTRAST = RScript("""
@@ -76,8 +91,6 @@ entry <- function(df) {
     model |>
         emmeans(~ cell | eval_verb) |>
         contrast(method = list(
-            contrast_1      = c(-1, +1,  0,  0, +1, -1),
-            contrast_2     = c(-1, +1, +1, -1,  0,  0),
             total              = c(-1, +1,  0,  0,  0,  0),
             lex_given_abstract = c( 0,  0, -1, +1,  0,  0),
             abstract_given_lex = c( 0,  0,  0,  0, -1, +1)
@@ -143,9 +156,10 @@ def plot_forest(contrasts: pl.DataFrame, metric_label: str, out_path: Path) -> N
     dodge = 0.7 / n_effects
     y_pos = {v: i for i, v in enumerate(verbs)}
 
-    fig, ax = plt.subplots(figsize=(7, max(4, len(verbs) * 0.7)))
+    height = max(2.8, len(verbs) * 0.35)
+    fig, ax = plt.subplots(figsize=(ACL_COL_WIDTH, height))
 
-    for idx, (effect_key, effect_label, color) in enumerate(CONTRASTS):
+    for idx, (effect_key, effect_label, color, marker) in enumerate(CONTRASTS):
         sub = contrasts.filter(pl.col("effect") == effect_key)
         ordered = pl.DataFrame({"eval_verb": verbs}).join(sub, on="eval_verb", how="left")
         x = ordered["estimate"].to_numpy()
@@ -156,11 +170,11 @@ def plot_forest(contrasts: pl.DataFrame, metric_label: str, out_path: Path) -> N
             x=x,
             y=y,
             xerr=xerr,
-            fmt="o",
-            capsize=3,
+            fmt=marker,
+            capsize=2,
             color=color,
-            markersize=5,
-            linewidth=1.2,
+            markersize=3,
+            linewidth=1,
             label=effect_label,
         )
 
@@ -168,15 +182,20 @@ def plot_forest(contrasts: pl.DataFrame, metric_label: str, out_path: Path) -> N
     ax.set_yticks(range(len(verbs)))
     ax.set_yticklabels(verbs)
 
-    direction = "↑" if metric_label == "NLL" else "↓"
-    ax.set_xlabel(f"DiD contrast [{metric_label}]  ({direction} = preemption-specific effect beyond entrenchment)")
+    arrow_better = r"$\uparrow$" if metric_label == "NLL" else r"$\downarrow$"
+    ax.set_xlabel(
+        rf"{metric_label} Contrast (\textsc{{keep-p}} $-$ \textsc{{remove-p}}) {arrow_better}"
+    )
     ax.set_ylabel("Verb")
+    ticks = ax.get_xticks()
+    ax.set_xticks(ticks)
+    ax.set_xlim(ticks[0] - 0.02, ticks[-1] + 0.02)
     ax.grid(axis="x", linestyle=":", alpha=0.5)
-    ax.legend(title="Effect", bbox_to_anchor=(1.02, 1), loc="upper left", borderaxespad=0)
-    fig.tight_layout()
+    ax.legend(loc="lower center", bbox_to_anchor=(0.5, 1.01), ncols=3)
+    plt.tight_layout()
 
     out_path.parent.mkdir(parents=True, exist_ok=True)
-    fig.savefig(out_path)
+    fig.savefig(out_path, bbox_inches="tight")
     plt.close(fig)
     print(f"Figure saved: {out_path}")
 
