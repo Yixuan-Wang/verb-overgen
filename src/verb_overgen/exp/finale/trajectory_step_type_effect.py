@@ -27,6 +27,7 @@ import numpy as np
 import polars as pl
 
 from verb_overgen.common.features import VERB_TARGET_FINALE
+from verb_overgen.exp.finale.util import despine
 from verb_overgen.util.r_arrow_bridge import RScript
 
 TRAJECTORY_DIR = Path("var/results/v2/trajectory")
@@ -174,6 +175,7 @@ def plot_marginal_forest(contrasts: pl.DataFrame, out_path: Path) -> None:
     ax.set_xlabel("Contrast: causative - non-causative update effect on delta NLL")
     ax.set_ylabel("Verb")
     ax.grid(axis="x", linestyle=":", alpha=0.5)
+    despine(ax)
     fig.tight_layout()
 
     out_path.parent.mkdir(parents=True, exist_ok=True)
@@ -230,6 +232,7 @@ def plot_step_forest(contrasts: pl.DataFrame, out_path: Path) -> None:
     ax.set_ylabel("Verb")
     ax.grid(axis="x", linestyle=":", alpha=0.5)
     ax.legend(title="Trajectory point", bbox_to_anchor=(1.02, 1), loc="upper left", borderaxespad=0)
+    despine(ax)
     fig.tight_layout()
 
     out_path.parent.mkdir(parents=True, exist_ok=True)

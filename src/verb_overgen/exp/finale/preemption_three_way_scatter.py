@@ -16,12 +16,15 @@ import matplotlib.pyplot as plt
 import numpy as np
 import polars as pl
 
-from verb_overgen.util.misc_util import adhoc
 from verb_overgen.common.features import VERB_TARGET_FINALE
+from verb_overgen.exp.finale.util import ACL_COL_WIDTH, apply_acl_style, despine
+from verb_overgen.util.misc_util import adhoc
 
 TESTSET_DIR = Path("var/results/v2/testset")
 VERB_STATS_PATH = Path("var/results/verb_stats.parquet")
 FIGURE_DIR = Path("var/figures")
+
+apply_acl_style()
 
 METRICS: dict[str, tuple[str, str]] = {
     "nll": ("result_nll", "NLL"),
@@ -30,11 +33,14 @@ METRICS: dict[str, tuple[str, str]] = {
 
 CONDITIONS = [
     # ("none", "black"),
-    ("remove::e", "blue"),
-    ("remove::p", "red"),
+    ("remove::e", r"\textsc{keep-p}", "tab:orange"),
+    ("remove::p", r"\textsc{remove-p}", "tab:blue"),
 ]
 
-MARKERS = {"causative": "o", "transitive": "X"}
+MARKERS = {"causative": 
+    ("expected", "o"),
+    "transitive": ("overgeneralized", "X"),
+}
 
 
 def _verb_order(by: pl.Expr) -> list[str]:
@@ -116,9 +122,9 @@ def plot_dumbbell(agg: pl.DataFrame, metric_label: str, context_label: str, out_
     dodge = 0.8 / n
 
     df = agg.to_pandas()
-    fig, ax = plt.subplots(figsize=(max(8, 0.7 * len(eval_verbs)), 5))
+    fig, ax = plt.subplots(figsize=(ACL_COL_WIDTH, 3.0))
 
-    for idx, (cond, color) in enumerate(CONDITIONS):
+    for idx, (cond, label, color) in enumerate(CONDITIONS):
         cond_df = df[df["condition"] == cond]
         x_offset = (idx - (n - 1) / 2) * dodge
 
@@ -132,39 +138,43 @@ def plot_dumbbell(agg: pl.DataFrame, metric_label: str, context_label: str, out_
                 [xv, xv],
                 [caus["metric_mean"].values[0], tran["metric_mean"].values[0]],
                 color=color,
-                linewidth=1.5,
+                linewidth=1,
                 alpha=0.6,
                 zorder=1,
+                label=label,
             )
 
-        for construction, marker in MARKERS.items():
+        for construction, (label, marker) in MARKERS.items():
             sub = cond_df[cond_df["eval_construction"] == construction].sort_values("eval_verb")
             if sub.empty:
                 continue
             x = np.array([x_pos[v] + x_offset for v in sub["eval_verb"]])
             y = sub["metric_mean"].to_numpy()
-            ax.plot(x, y, marker, color=color, markersize=6, linestyle="none", zorder=2)
+            ax.plot(x, y, marker, color=color, markersize=4, linestyle="none", zorder=2, label=label)
 
     ax.set_xticks(range(len(eval_verbs)))
-    ax.set_xticklabels(eval_verbs, rotation=45, ha="right")
+    ax.set_xticklabels([fr"$\textit{{{verb}}}$" for verb in eval_verbs])
     ax.set_xlabel("Verb")
     ax.set_ylabel(f"Mean {metric_label}")
     ax.grid(axis="y", linestyle=":", alpha=0.4)
 
     condition_handles = [
-        mlines.Line2D([], [], color=color, marker="o", markersize=6, label=cond) for cond, color in CONDITIONS
+        mlines.Line2D([], [], color=color, marker="o", markersize=4, label=label) for cond, label, color in CONDITIONS
     ]
     marker_handles = [
-        mlines.Line2D([], [], color="gray", marker=marker, markersize=6, linestyle="none", label=construction)
-        for construction, marker in MARKERS.items()
+        mlines.Line2D([], [], color="gray", marker=marker, markersize=4, linestyle="none", label=label)
+        for construction, (label, marker) in MARKERS.items()
     ]
     ax.legend(
         handles=condition_handles + marker_handles,
-        bbox_to_anchor=(1.02, 1),
-        loc="upper left",
-        borderaxespad=0,
+        loc="lower center",
+        bbox_to_anchor=(0.5, 1.01),
+        ncols=2,
+        frameon=False,
     )
-    ax.set_title(f"Causative (O) vs Transitive (X) — {context_label}")
+    # context_title = context_label.replace("_", r"\_")
+    # ax.set_title(f"Causative vs. transitive")
+    despine(ax)
     fig.tight_layout()
 
     out_path.parent.mkdir(parents=True, exist_ok=True)

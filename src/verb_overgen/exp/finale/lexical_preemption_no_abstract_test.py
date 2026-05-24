@@ -1,15 +1,15 @@
-"""Isolate lexical preemption: `e :: per-verb-no-abstract` vs `p :: all-verb`.
+"""Isolate item-specific preemption: `e :: per-verb-no-abstract` vs `p :: all-verb`.
 
-Both conditions remove every other verb's causatives (abstract preemption off in
+Both conditions remove every other verb's causatives (indirect preemption off in
 both arms) and reduce the target verb's total count by the same number.  The only
-difference: `p :: all-verb` removes the target verb's *own* causatives (lexical
+difference: `p :: all-verb` removes the target verb's *own* causatives (item-specific
 preemption removed), while `e :: per-verb-no-abstract` keeps them and instead
 removes an equivalent count from the target's entrenchment.
 
 Contrast direction: e::per-verb-no-abstract − p::all-verb.
   NLL  > 0  (e has higher NLL → p model assigns more prob to transitives)
   SLOR < 0  (e has lower SLOR → p model considers transitives more grammatical)
-indicates lexical preemption is operative.
+indicates item-specific preemption is operative.
 """
 
 import argparse
@@ -20,6 +20,7 @@ import matplotlib.pyplot as plt
 import polars as pl
 
 from verb_overgen.common.features import VERB_TARGET_FINALE
+from verb_overgen.exp.finale.util import despine
 from verb_overgen.util.r_arrow_bridge import RScript
 
 TESTSET_DIR = Path("var/results/v2/testset")
@@ -47,10 +48,10 @@ entry <- function(df) {
         data = df
     )
 
-    # e_noabs − p_all: positive = lexical preemption operative
+    # e_noabs − p_all: positive = item-specific preemption operative
     model |>
         emmeans(~ cell | eval_verb) |>
-        contrast(method = list(lex_preemption = c(-1, +1)), adjust = "mvt") |>
+        contrast(method = list(item_specific_preemption = c(-1, +1)), adjust = "mvt") |>
         tidy()
 }
 """)
@@ -124,6 +125,7 @@ def plot_forest(contrasts: pl.DataFrame, metric_label: str, out_path: Path) -> N
         color="black",
         markersize=6,
         linewidth=1.5,
+        o
     )
     ax.axvline(0, color="black", linestyle="--", linewidth=1, alpha=0.7)
     ax.set_yticks(range(len(verbs)))
@@ -133,9 +135,10 @@ def plot_forest(contrasts: pl.DataFrame, metric_label: str, out_path: Path) -> N
         arrow_better = "↑"
     else:
         arrow_better = "↓"
-    ax.set_xlabel(f"Contrast (e::no-abstract − p::all-verb){arrow_better} [{metric_label}]")
+    ax.set_xlabel(f"Contrast (e::no-indirect − p::all-verb){arrow_better} [{metric_label}]")
     ax.set_ylabel("Verb")
     ax.grid(axis="x", linestyle=":", alpha=0.5)
+    despine(ax)
     plt.tight_layout()
 
     out_path.parent.mkdir(parents=True, exist_ok=True)
@@ -146,11 +149,11 @@ def plot_forest(contrasts: pl.DataFrame, metric_label: str, out_path: Path) -> N
 
 def print_summary(contrasts: pl.DataFrame, metric_label: str, context_tag: str) -> None:
     if metric_label == "NLL":
-        direction = "contrast > 0 (lexical preemption reduces overgen.)"
+        direction = "contrast > 0 (item-specific preemption reduces overgen.)"
     else:
-        direction = "contrast < 0 (lexical preemption reduces overgen.)"
+        direction = "contrast < 0 (item-specific preemption reduces overgen.)"
     print(f"\n{'=' * 64}")
-    print(f"  {metric_label}  —  contrast: e::per-verb-no-abstract − p::all-verb")
+    print(f"  {metric_label}  —  contrast: e::no-indirect − p::all-verb")
     print(f"  Eval: transitive :: {context_tag}")
     print(f"  Hypothesis direction: {direction}")
     print(f"{'=' * 64}")
@@ -194,7 +197,7 @@ def main() -> None:
         contrasts = run_contrast(df, metric_col)
         print_summary(contrasts, metric_label, context_tag)
 
-        out_path = args.figure_dir / f"20260519.lexical-preemption-no-abstract_{context_tag}_{metric_key}.pdf"
+        out_path = args.figure_dir / f"20260519.item-specific-preemption-no-indirect_{context_tag}_{metric_key}.pdf"
         plot_forest(contrasts, metric_label, out_path)
 
 

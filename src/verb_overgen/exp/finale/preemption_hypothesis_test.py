@@ -20,6 +20,7 @@ import matplotlib.pyplot as plt
 import polars as pl
 
 from verb_overgen.common.features import VERB_TARGET_FINALE
+from verb_overgen.exp.finale.util import ACL_COL_WIDTH, apply_acl_style, despine
 from verb_overgen.util.misc_util import adhoc
 from verb_overgen.util.r_arrow_bridge import RScript
 
@@ -27,22 +28,7 @@ TESTSET_DIR = Path("var/results/v2/testset")
 VERB_STATS_PATH = Path("var/results/verb_stats.parquet")
 FIGURE_DIR = Path("var/figures")
 
-# ACL figure style (acl.sty two-column layout)
-ACL_COL_WIDTH = 3.18  # \columnwidth, inches
-
-plt.rcParams.update({
-    "text.usetex": True,
-    "text.latex.preamble": r"\usepackage{mathptmx}",
-    "font.family": "serif",
-    "font.size": 9,
-    "axes.labelsize": 9,
-    "axes.titlesize": 9,
-    "xtick.labelsize": 8,
-    "ytick.labelsize": 8,
-    "legend.fontsize": 8,
-    "pdf.fonttype": 42,
-    "ps.fonttype": 42,
-})
+apply_acl_style()
 
 METRICS: dict[str, tuple[str, str]] = {
     "nll": ("result_nll", "NLL"),
@@ -133,15 +119,15 @@ def plot_forest(contrasts: pl.DataFrame, metric_label: str, out_path: Path) -> N
         x=x,
         y=list(range(len(verbs))),
         xerr=xerr,
-        fmt="o",
+        fmt="s",
         capsize=2,
-        color="black",
+        color="#74add1",
         markersize=3,
         linewidth=1,
     )
     ax.axvline(0, color="black", linestyle="--", linewidth=1, alpha=0.7)
     ax.set_yticks(range(len(verbs)))
-    ax.set_yticklabels(verbs)
+    ax.set_yticklabels([fr"$\textit{{{verb}}}$" for verb in verbs], fontstyle="italic")
 
     arrow_better = r"$\uparrow$" if metric_label == "NLL" else r"$\downarrow$"
     ax.set_xlabel(
@@ -153,6 +139,7 @@ def plot_forest(contrasts: pl.DataFrame, metric_label: str, out_path: Path) -> N
         ax.set_xticks(ticks)
         ax.set_xlim(ticks[0] - 0.02, ticks[-1] + 0.02)
     ax.grid(axis="x", linestyle=":", alpha=0.5)
+    despine(ax)
     plt.tight_layout()
 
     out_path.parent.mkdir(parents=True, exist_ok=True)

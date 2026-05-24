@@ -35,6 +35,7 @@ import matplotlib.pyplot as plt
 import polars as pl
 
 from verb_overgen.common.features import VERB_TARGET_FINALE
+from verb_overgen.exp.finale.util import despine
 from verb_overgen.util.r_arrow_bridge import RScript
 
 TESTSET_DIR = Path("var/results/v2/testset")
@@ -182,6 +183,7 @@ def plot_forest(
     ax.set_ylabel("Verb")
     ax.set_title(f"{spec.eval_construction} :: {context_tag}")
     ax.grid(axis="x", linestyle=":", alpha=0.5)
+    despine(ax)
     plt.tight_layout()
 
     out_path.parent.mkdir(parents=True, exist_ok=True)

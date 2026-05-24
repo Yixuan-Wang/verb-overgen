@@ -40,7 +40,14 @@ A compound condition `e :: per-verb-no-abstract` combines `p :: except-verb` wit
 | --: | --- | --- | --- | --- |
 | `e :: per-verb-no-abstract` | ✅ | ❌ | 🔽 | ✅ |
 
-It is the entrenchment-matched twin of `p :: all-verb`: target-verb total count is reduced by the same number of instances as in `p :: all-verb` (via 🔽 on the target's entrenchment instead of ❌ on the target's causatives), while non-target causatives are removed in both. Contrasting `p :: all-verb` against `e :: per-verb-no-abstract` isolates the contribution of *lexical* preemption (the target verb's own causatives) in the absence of abstract preemption.
+It is the entrenchment-matched twin of `p :: all-verb`: target-verb total count is reduced by the same number of instances as in `p :: all-verb` (via 🔽 on the target's entrenchment instead of ❌ on the target's causatives), while non-target causatives are removed in both. Contrasting `p :: all-verb` against `e :: per-verb-no-abstract` isolates the contribution of *item-specific* preemption (the target verb's own causatives) in the absence of indirect preemption (other verbs' causatives).
+
+The run-scope name `per-verb-no-abstract` is legacy metadata. In the current terminology, this condition is better read as `per-verb-no-indirect`.
+
+Analysis terminology:
+- **Item-specific preemption** refers to evidence from the target verb's own causatives.
+- **Indirect preemption** refers to evidence from other verbs' causatives.
+- **Abstract preemption** refers to the combined effect available when both item-specific and indirect evidence are present. This combined effect is not assumed to be the arithmetic sum of the item-specific and indirect effects, since the two signals may interact or be redundant.
 
 `none` and `all-verb` are repeated once per seed, `per-verb`, `except-verb`, and `per-verb-no-abstract` are repeated once per verb per seed.
 We have the same 5 seeds shared across all experiments.
@@ -110,6 +117,3 @@ For verbs, we have 10 verbs of interest.
 - Preemption effect on overgeneralization will always be measured on `transitive`s for the `remove` manipulation, since the transitives are the "overgeneralization" instances.
 - To measure the preemption effect, we will compare `remove :: p` with `remove :: e` on `transitive :: with_context`. If removing preempting instances increases the transitive NLL (or decreases the SLOR)
 than removing entrenchment-minus-preemption instances, then we have evidence for the preemption effect, and it attributes to preemption, not entrenchment.
-
-
-

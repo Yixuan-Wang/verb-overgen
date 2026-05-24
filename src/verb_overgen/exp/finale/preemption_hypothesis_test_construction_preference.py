@@ -29,6 +29,7 @@ import matplotlib.pyplot as plt
 import polars as pl
 
 from verb_overgen.common.features import VERB_TARGET_FINALE
+from verb_overgen.exp.finale.util import despine
 from verb_overgen.util.misc_util import adhoc
 from verb_overgen.util.r_arrow_bridge import RScript
 
@@ -161,6 +162,7 @@ def plot_forest(contrasts: pl.DataFrame, metric_label: str, out_path: Path) -> N
     )
     ax.set_ylabel("Verb")
     ax.grid(axis="x", linestyle=":", alpha=0.5)
+    despine(ax)
     plt.tight_layout()
 
     out_path.parent.mkdir(parents=True, exist_ok=True)

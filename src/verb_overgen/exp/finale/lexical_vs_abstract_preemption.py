@@ -9,9 +9,9 @@ entrenchment / data-volume effect of removing N verb-instances.
 Final-epoch `transitive :: with_context` or `transitive :: no_context`. DiD
 contrasts per verb:
 
-  total              = all_e − all_p          (`none` cancels in DiD)
-  lex_given_abstract = per_e − per_p          (`none` cancels in DiD)
-  abstract_given_lex = except_e − except_p    (mirror of lex_given_abstract)
+  abstract                    = all_e − all_p
+  item_specific_given_indirect = per_e − per_p
+  indirect_given_item_specific = except_e − except_p    (mirror of item_specific_given_indirect)
 
 Direction: NLL ↑ / SLOR ↓ = more preemption-specific effect beyond
 entrenchment. (Equivalently, the sign convention reverses the original
@@ -28,28 +28,14 @@ import numpy as np
 import polars as pl
 
 from verb_overgen.common.features import VERB_TARGET_FINALE
+from verb_overgen.exp.finale.util import ACL_COL_WIDTH, apply_acl_style, despine
 from verb_overgen.util.r_arrow_bridge import RScript
 
 TESTSET_DIR = Path("var/results/v2/testset")
 VERB_STATS_PATH = Path("var/results/verb_stats.parquet")
 FIGURE_DIR = Path("var/figures")
 
-# ACL figure style (acl.sty two-column layout)
-ACL_COL_WIDTH = 3.18  # \columnwidth, inches
-
-plt.rcParams.update({
-    "text.usetex": True,
-    "text.latex.preamble": r"\usepackage{mathptmx}",
-    "font.family": "serif",
-    "font.size": 9,
-    "axes.labelsize": 9,
-    "axes.titlesize": 9,
-    "xtick.labelsize": 8,
-    "ytick.labelsize": 8,
-    "legend.fontsize": 8,
-    "pdf.fonttype": 42,
-    "ps.fonttype": 42,
-})
+apply_acl_style()
 
 METRICS: dict[str, tuple[str, str]] = {
     "nll": ("result_nll", "NLL"),
@@ -60,9 +46,9 @@ METRICS: dict[str, tuple[str, str]] = {
 CONTRASTS = [
     # ("contrast_1", "contrast 1", "#b22222", "s"),
     # ("contrast_2", "contrast 2", "#f4a0a0", "D"),
-    ("total", "Total", "black", "o"),
-    ("lex_given_abstract", "Lexical", "#1f77b4", "s"),
-    ("abstract_given_lex", "Abstract", "#2ca02c", "^"),
+    ("abstract", "Abstract", "#2d3748", "o"),
+    ("item_specific_given_indirect", "Item-specific", "#74add1", "s"),
+    # ("indirect_given_item_specific", "Indirect", "#f46d43", "^"),
 ]
 
 _R_CONTRAST = RScript("""
@@ -91,9 +77,9 @@ entry <- function(df) {
     model |>
         emmeans(~ cell | eval_verb) |>
         contrast(method = list(
-            total              = c(-1, +1,  0,  0,  0,  0),
-            lex_given_abstract = c( 0,  0, -1, +1,  0,  0),
-            abstract_given_lex = c( 0,  0,  0,  0, -1, +1)
+            abstract                    = c(-1, +1,  0,  0,  0,  0),
+            item_specific_given_indirect = c( 0,  0, -1, +1,  0,  0)
+            # indirect_given_item_specific = c( 0,  0,  0,  0, -1, +1)
         ), adjust = "mvt") |>
         tidy()
 }
@@ -180,7 +166,7 @@ def plot_forest(contrasts: pl.DataFrame, metric_label: str, out_path: Path) -> N
 
     ax.axvline(0, color="black", linestyle="--", linewidth=1, alpha=0.7)
     ax.set_yticks(range(len(verbs)))
-    ax.set_yticklabels(verbs)
+    ax.set_yticklabels([fr"$\textit{{{verb}}}$" for verb in verbs])
 
     arrow_better = r"$\uparrow$" if metric_label == "NLL" else r"$\downarrow$"
     ax.set_xlabel(
@@ -191,7 +177,8 @@ def plot_forest(contrasts: pl.DataFrame, metric_label: str, out_path: Path) -> N
     ax.set_xticks(ticks)
     ax.set_xlim(ticks[0] - 0.02, ticks[-1] + 0.02)
     ax.grid(axis="x", linestyle=":", alpha=0.5)
-    ax.legend(loc="lower center", bbox_to_anchor=(0.5, 1.01), ncols=3)
+    ax.legend(loc="lower center", bbox_to_anchor=(0.5, 1.01), ncols=3, frameon=False)
+    despine(ax)
     plt.tight_layout()
 
     out_path.parent.mkdir(parents=True, exist_ok=True)
@@ -203,7 +190,7 @@ def plot_forest(contrasts: pl.DataFrame, metric_label: str, out_path: Path) -> N
 def print_summary(contrasts: pl.DataFrame, metric_label: str, context_tag: str) -> None:
     direction = "↑" if metric_label == "NLL" else "↓"
     print(f"\n{'=' * 64}")
-    print(f"  {metric_label}  —  overall preemption effect: lexical/abstract decomposition")
+    print(f"  {metric_label}  —  overall preemption effect: item-specific/indirect/abstract decomposition")
     print(f"  Eval: transitive :: {context_tag}")
     print(f"  Direction: {direction} = preemption-specific effect beyond entrenchment")
     print(f"{'=' * 64}")
@@ -239,7 +226,10 @@ def main() -> None:
     for metric_key, (metric_col, metric_label) in METRICS.items():
         contrasts = run_contrast(df, metric_col)
         print_summary(contrasts, metric_label, context_tag)
-        out_path = args.figure_dir / f"20260513.v3.lex-vs-abstract-preemption-did_{context_tag}_{metric_key}.pdf"
+        out_path = (
+            args.figure_dir
+            / f"20260513.v3.item-specific-indirect-abstract-preemption-did_{context_tag}_{metric_key}.pdf"
+        )
         plot_forest(contrasts, metric_label, out_path)
 
 
