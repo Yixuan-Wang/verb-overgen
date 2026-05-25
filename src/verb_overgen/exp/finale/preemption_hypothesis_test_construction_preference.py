@@ -44,8 +44,8 @@ FIGURE_DIR = Path("var/figures")
 apply_acl_style()
 
 METRICS: dict[str, tuple[str, str]] = {
-    "nll": ("gap_nll", "NLL Difference"),
-    "slor": ("gap_slor", "SLOR Difference"),
+    "nll": ("gap_nll", "$\Delta$NLL"),
+    "slor": ("gap_slor", "$\Delta$SLOR"),
 }
 
 CONTRASTS = [
@@ -192,12 +192,12 @@ def plot_forest(contrasts: pl.DataFrame, metric_label: str, out_path: Path) -> N
     ax.set_yticks(range(len(verbs)))
     ax.set_yticklabels([fr"$\textit{{{verb}}}$" for verb in verbs])
 
-    if metric_label.startswith("NLL"):
+    if "NLL" in metric_label:
         arrow_better = r"$\uparrow^?$"
     else:
         arrow_better = r"$\downarrow^?$"
     ax.set_xlabel(
-        f"{metric_label} Contrast\n" +
+        f"{metric_label} Contrast " +
         rf"(\textsc{{keep-p}} $-$ \textsc{{remove-p}}) {arrow_better}"
     )
     ax.set_ylabel("Verb")
