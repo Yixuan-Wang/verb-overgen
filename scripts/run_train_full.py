@@ -1,10 +1,10 @@
 #!/usr/bin/env -S uv run --no-project --script
 #SBATCH --account=aip-fredashi
-#SBATCH --job-name=verb-overgen-260402-full-laugh
+#SBATCH --job-name=verb-overgen-260525-full
 #SBATCH --cpus-per-task=8
 #SBATCH --gres=gpu:l40s:1
 #SBATCH --mem=32G
-#SBATCH --array=0-4%22
+#SBATCH --array=0-4
 #SBATCH --time=3:00:00
 #SBATCH -o logs/slurm/slurm-%A_%a_%x.out.txt
 #SBATCH -e logs/slurm/slurm-%A_%a_%x.err.txt
@@ -36,7 +36,7 @@ def notify(event: str, line: int | None = None):
     job_id = os.environ.get("SLURM_JOB_ID", "")
     array_id = os.environ.get("SLURM_ARRAY_TASK_ID", "0")
     time_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    msg = f"{event} name={job_name} id={job_id} array={array_id}"
+    msg = f"#job {event} name={job_name} id={job_id} array={array_id}"
     if line is not None:
         msg += f" line={line}"
     msg += f" time={time_str}"
@@ -50,7 +50,7 @@ def load_direnv():
 
 
 def main():
-    notify("start_job")
+    notify("start")
 
     load_direnv()
 
@@ -60,17 +60,16 @@ def main():
     sh.uv(
         "run", "-m", "verb_overgen.train.train",
         "trainer.max_epochs=3",
-        "wandb.tags=['260402-full']",
-        # "data=augment-laugh-causative",
+        "wandb.tags=['260525-full']",
         "data.train.subset=full",
-        "data.train.subset_verb_of_interest=laugh",
+        "+trace=voi_11",
         f"seed={seed}",
         f"data.train.shuffle_seed={shuffle_seed}",
         f"data.train.subset_seed={subset_seed}",
         _fg=True,
     )
 
-    notify("finish_job")
+    notify("finish")
 
 
 if __name__ == "__main__":
@@ -79,5 +78,5 @@ if __name__ == "__main__":
     except Exception:
         _, _, tb = sys.exc_info()
         lineno = traceback.extract_tb(tb)[-1].lineno
-        notify("fail_job", line=lineno)
+        notify("fail", line=lineno)
         raise
