@@ -148,7 +148,7 @@ def plot_forest(contrasts: pl.DataFrame, metric_label: str, out_path: Path) -> N
         xerr=xerr,
         fmt="D",
         capsize=2,
-        color="#74add1",
+        color="grey",
         markersize=3,
         linewidth=1,
     )
@@ -157,9 +157,9 @@ def plot_forest(contrasts: pl.DataFrame, metric_label: str, out_path: Path) -> N
     ax.set_yticklabels([fr"$\textit{{{verb}}}$" for verb in verbs], fontstyle="italic")
 
     if metric_label.startswith("NLL"):
-        arrow_better = r"$\uparrow$"
+        arrow_better = r"$\uparrow^?$"
     else:
-        arrow_better = r"$\downarrow$"
+        arrow_better = r"$\downarrow^?$"
     ax.set_xlabel(
         rf"{metric_label} Contrast (\textsc{{keep-p}} $-$ \textsc{{remove-p}}) {arrow_better}"
     )
