@@ -59,7 +59,7 @@ entry <- function(df) {
 """)
 
 
-def load_data(testset_dir: Path, has_context: bool) -> pl.DataFrame:
+def load_data(testset_dir: Path, has_context: bool, compute_slor: bool = True) -> pl.DataFrame:
     df = (
         pl.scan_parquet(testset_dir / "*.parquet")
         .filter(
@@ -78,7 +78,7 @@ def load_data(testset_dir: Path, has_context: bool) -> pl.DataFrame:
             "eval_verb",
             "eval_index_verb_context",
             "result_nll",
-            "result_slor",
+            *(["result_slor"] if compute_slor else []),
         )
         .collect()
     )
@@ -180,20 +180,27 @@ def main() -> None:
         action="store_true",
         help="Use no_context eval condition instead of with_context (default: with_context)",
     )
+    parser.add_argument(
+        "--no-slor",
+        action="store_true",
+        help="Skip SLOR metric (use when testset parquets were collected without SLOR).",
+    )
     args = parser.parse_args()
 
     os.chdir(os.environ.get("PWD", "."))
 
     has_context = not args.no_context
     context_tag = "no_context" if args.no_context else "with_context"
+    compute_slor = not args.no_slor
 
     print("Loading testset data...")
-    df = load_data(args.testset_dir, has_context)
+    df = load_data(args.testset_dir, has_context, compute_slor)
     n_verbs = df["eval_verb"].n_unique()
     n_rows = len(df)
     print(f"  {n_rows:,} rows  |  {n_verbs} verbs  |  conditions: {sorted(df['run_target'].unique())}")
 
-    for metric_key, (metric_col, metric_label) in METRICS.items():
+    metrics = {k: v for k, v in METRICS.items() if k != "slor" or compute_slor}
+    for metric_key, (metric_col, metric_label) in metrics.items():
         contrasts = run_contrast(df, metric_col)
         print_summary(contrasts, metric_label, context_tag)
 

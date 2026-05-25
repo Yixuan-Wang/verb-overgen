@@ -73,19 +73,25 @@ def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("tags", nargs="+", help="WandB tags to filter runs by (matched with $in)")
     parser.add_argument("--output-dir", required=True, help="Directory to save extracted datasets")
-    parser.add_argument("--unigram-dir", required=True, help="Directory containing per-run unigram parquets and metadata.jsonl (from collect_unigram.py)")
+    parser.add_argument("--unigram-dir", required=False, default=None, help="Directory containing per-run unigram parquets and metadata.jsonl (from collect_unigram.py). Required unless --no-slor is set.")
+    parser.add_argument("--no-slor", action="store_true", help="Skip SLOR computation and omit result_slor from output. Does not require --unigram-dir.")
     parser.add_argument("--append", action="store_true", help="Append new runs to an existing output directory instead of replacing metadata.jsonl.")
     args = parser.parse_args()
 
     output_dir = Path(args.output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
 
-    unigram_dir = Path(args.unigram_dir)
+    compute_slor = not args.no_slor
+    if compute_slor and args.unigram_dir is None:
+        parser.error("--unigram-dir is required unless --no-slor is set")
+
     unigram_index: dict[str, Path] = {}
-    with (unigram_dir / "metadata.jsonl").open() as f:
-        for line in f:
-            entry = json.loads(line)
-            unigram_index[entry["internal"]["run_name"]] = unigram_dir / entry["path"]
+    if compute_slor:
+        unigram_dir = Path(args.unigram_dir)
+        with (unigram_dir / "metadata.jsonl").open() as f:
+            for line in f:
+                entry = json.loads(line)
+                unigram_index[entry["internal"]["run_name"]] = unigram_dir / entry["path"]
 
     dataset_input = load_testset_input()
 
@@ -142,15 +148,20 @@ def main() -> None:
                 coalesce=True,
                 validate="m:1",
             )
-            unigram_prob_map = load_unigram_prob_map(unigram_index[run_name])
             last_idx = last_sentence_index(pl.col("input_ids"), TOKEN_ID_BOS)
+            slor_with_columns = []
+            if compute_slor:
+                unigram_prob_map = load_unigram_prob_map(unigram_index[run_name])
+                slor_with_columns = [
+                    slor(
+                        token_prob=pl.col("token_prob").list.slice(last_idx),
+                        input_ids=pl.col("input_ids").list.slice(last_idx + 1),
+                        unigram_prob_map=unigram_prob_map,
+                    ).alias("slor"),
+                ]
             dataset = dataset.with_columns(
                 pl.col("token_prob").list.slice(last_idx).pipe(nll).alias("nll"),
-                slor(
-                    token_prob=pl.col("token_prob").list.slice(last_idx),
-                    input_ids=pl.col("input_ids").list.slice(last_idx + 1),
-                    unigram_prob_map=unigram_prob_map,
-                ).alias("slor"),
+                *slor_with_columns,
             )
             dataset = dataset.select(
                 pl.col("run_name"),
@@ -168,7 +179,7 @@ def main() -> None:
                 pl.col("kind").str.extract(r"(causative|transitive)").alias("eval_construction"),
                 pl.col("token_prob").alias("result_token_prob"),
                 pl.col("nll").alias("result_nll"),
-                pl.col("slor").alias("result_slor"),
+                *([pl.col("slor").alias("result_slor")] if compute_slor else []),
             )
 
             metadata_with_path = {**metadata, "path": str(rel_path)}
