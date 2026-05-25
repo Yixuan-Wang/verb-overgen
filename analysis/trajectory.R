@@ -175,6 +175,152 @@ moments <- moments_raw %>%
   # summarise(prepost = mean(prepost), nn = n(), .groups="drop") %>%
   pivot_wider(names_from = kind, values_from = prepost)
 
+
+moments %>%
+  filter(step_type == "causative") %>%
+  group_by(verb, epoch, run_seed, relative_step) %>%
+  summarize(
+    sentence_transitive = mean(sentence_transitive),
+    sentence_causative = mean(sentence_causative)
+  ) %>%
+  ungroup() %>%
+  ggplot(aes(sentence_causative, sentence_transitive, color = epoch)) +
+  geom_point(alpha = 0.05) +
+  geom_smooth(method = "lm") +
+  # facet_grid(epoch~verb, scales = "free") +
+  ggh4x::facet_grid2(epoch ~ verb, scales = "free", independent = "all") +
+  ggh4x::facetted_pos_scales(
+    x = list(
+      TRUE ~ scale_x_continuous(limits = c(-0.15, 0.15))
+    ),
+    y = list(
+      TRUE ~ scale_y_continuous(limits = c(-0.15, 0.15))
+    )
+  ) +
+  theme_classic(base_size = 16, base_family = "Times") +
+  theme(
+    strip.text.x = element_text(face = "italic"),
+    strip.background = element_blank()
+  ) +
+  labs(
+    x = "Periphrastic Causative NLL",
+    y = "Transitive NLL"
+  )
+
+agg_corr <- moments_raw %>%
+  filter(kind %in% c("sentence_transitive", "sentence_causative")) %>%
+  mutate(
+    diff = post-pre
+  ) %>%
+  inner_join(eval_metadata) %>%
+  select(-index_sentence, -pre, -post, -prepost, -eval_construction) %>%
+  pivot_wider(names_from = kind, values_from = diff) %>%
+  group_by(verb, run_seed, epoch, step_type, relative_step) %>%
+  summarize(
+    transitive = mean(sentence_transitive),
+    causative = mean(sentence_causative)
+  ) %>%
+  ungroup() %>%
+  group_by(verb, step_type) %>%
+  summarize(
+    n = n(),
+    correlation = cor(transitive, causative, method = "pearson"),
+    agreement = mean(sign(transitive) == sign(causative)),
+    transitive = mean(transitive),
+    causative = mean(causative)
+  )
+
+
+moments_raw %>%
+  filter(kind %in% c("sentence_transitive", "sentence_causative")) %>%
+  mutate(
+    diff = post-pre
+  ) %>%
+  inner_join(eval_metadata) %>%
+  select(-index_sentence, -pre, -post, -prepost, -eval_construction) %>%
+  pivot_wider(names_from = kind, values_from = diff) %>%
+  mutate(
+    causative_decrease = sentence_causative < 0
+  ) %>%
+  group_by(verb, run_seed, epoch, causative_decrease, step_type, relative_step) %>%
+  summarize(
+    transitive = mean(sentence_transitive),
+    causative = mean(sentence_causative)
+  ) %>%
+  ungroup() %>%
+  group_by(verb, epoch, causative_decrease, step_type) %>%
+  summarize(
+    n = n(),
+    correlation = cor(transitive, causative, method = "pearson"),
+    agreement = mean(sign(transitive) == sign(causative)),
+    transitive = mean(transitive),
+    causative = mean(causative)
+  )
+
+
+# point_color = "#744577"
+# point_color = "#35858E"
+point_color = "#7DA78C"
+line_color = point_color
+
+moments_points <- moments %>%
+  filter(step_type == "causative") %>%
+  group_by(verb, epoch, run_seed, relative_step) %>%
+  summarize(
+    sentence_transitive = mean(sentence_transitive),
+    sentence_causative = mean(sentence_causative)
+  ) %>%
+  ungroup() %>%
+  mutate(
+    verb = factor(verb, levels = c("smile", "sneeze", "sleep", "cry", "laugh", "go"))
+  ) 
+
+moments_points %>%
+  ggplot(aes(sentence_causative, sentence_transitive)) +
+  geom_point(size = 1.2, alpha = 0.1, color = point_color) +
+  geom_smooth(method = "lm", color = "black", linewidth = 1) +
+  geom_richtext(
+    x = -0.14, y = 0.07, 
+    aes(label = stats), 
+    data = agg_corr %>% 
+      filter(step_type=="causative") %>%
+      mutate(
+        stats = glue::glue("<i>r</i> = {sprintf('%.2f', round(correlation, 2))}<br><i>agr.</i> = {sprintf('%.2f', round(agreement, 2))}"),
+        verb = factor(verb, levels = c("smile", "sneeze", "sleep", "cry", "laugh", "go"))
+      ),
+    hjust = 0, 
+    vjust = 0,
+    fill = NA, label.color = NA,
+    family = "Times",
+    size = 4.5
+  ) +
+  facet_wrap(~verb, nrow = 1, scales = "free") +
+  scale_x_continuous(limits = c(-0.15, 0.15)) +
+  scale_y_continuous(limits = c(-0.15, 0.15)) +
+  # facet_grid(epoch~verb, scales = "free") +
+  # ggh4x::facet_grid2(epoch ~ verb, scales = "free", independent = "all") +
+  # ggh4x::facetted_pos_scales(
+  #   x = list(
+  #     TRUE ~ scale_x_continuous(limits = c(-0.15, 0.15))
+  #   ),
+  #   y = list(
+  #     TRUE ~ scale_y_continuous(limits = c(-0.15, 0.15))
+  #   )
+  # ) +
+  theme_classic(base_size = 17, base_family = "Times") +
+  theme(
+    strip.text.x = element_text(face = "bold.italic", size = 18),
+    strip.background = element_blank()
+  ) +
+  labs(
+    x = "Periphrastic Causative NLL",
+    y = "Transitive NLL"
+  )
+
+ggsave("figures/prospective-ine-corr.pdf", width = 13.90, height = 2.88, dpi=300, device = cairo_pdf)
+
+
+
 moment_corr <- moments %>%
   group_by(verb, step_type, run_seed, eval_index_verb_context) %>%
   nest() %>%
@@ -244,7 +390,7 @@ moments_raw %>%
   group_by(verb, run_seed) %>%
   summarize(
     n = n(),
-    correlation = cor(transitive, causative, method = "spearman"),
+    correlation = cor(transitive, causative, method = "pearson"),
     agreement = mean(sign(transitive) == sign(causative))
   ) %>%
   ggplot(aes(verb, agreement)) +
@@ -258,7 +404,7 @@ moments_raw %>%
   select(-index_sentence, -eval_construction, -eval_has_context, -pre, -post) %>%
   # group_by(verb, step_type, epoch, kind, run_seed) %>%
   # summarise(prepost = mean(prepost), nn = n(), .groups="drop") %>%
-  group_by(verb, epoch, kind, step_type) %>%
+  group_by(verb, kind, step_type) %>%
   summarize(
     n = n(),
     sd = sd(prepost),
@@ -268,12 +414,12 @@ moments_raw %>%
   ) %>% 
   ungroup() %>%
   filter(kind == "sentence_transitive") %>%
-  ggplot(aes(verb, diff, shape = step_type, color = epoch)) +
+  ggplot(aes(verb, diff, shape = step_type)) +
   geom_point(position = position_dodge(0.5)) +
   geom_linerange(aes(ymin = diff-cb, ymax = diff+cb), position = position_dodge(0.5))
 
 moments_agg %>%
-  filter(kind == "sentence_context_transitive") %>%
+  filter(kind == "sentence_transitive") %>%
   ggplot(aes(relative_step, diff, color = step_type)) +
   geom_line() +
   # geom_point() +

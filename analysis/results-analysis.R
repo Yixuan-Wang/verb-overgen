@@ -79,7 +79,7 @@ manip_diffs_long
 fit_all <- lmer(score ~ run_target * eval_verb + (1 | run_seed:eval_verb:eval_index_verb_context),
             data = manip_diffs_long %>% 
               filter(eval_construction=="transitive", score_type == "result_nll") %>%
-              filter(run_scope == "per-verb", eval_has_context==FALSE) %>%
+              filter(run_scope == "all-verb", eval_has_context==FALSE) %>%
               mutate(
                 run_target = factor(run_target),
                 run_seed = factor(run_seed),
@@ -90,7 +90,9 @@ fit_all <- lmer(score ~ run_target * eval_verb + (1 | run_seed:eval_verb:eval_in
 summary(fit_all)
 
 emmeans(fit_all, pairwise ~ run_target | eval_verb) %>%
-  confint()
+  confint() %>%
+  .$contrasts %>%
+  tibble()
 
 
 # emmeans(fit_all, specs = ~run_target | eval_verb) %>%
