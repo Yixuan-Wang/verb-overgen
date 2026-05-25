@@ -1,7 +1,7 @@
 # Experiment 1: Overall Preemption Effect
 
 Notes on reconciling the original per-verb contrast in
-`preemption_hypothesis_test.py` with the item-specific/indirect/abstract decomposition in
+`preemption_hypothesis_test.py` with the verb-specific/indirect/abstract decomposition in
 `lexical_vs_abstract_preemption.py`. These are now treated as analyses within
 the same experiment: **Experiment 1, the overall effect of preemption**.
 Date: 2026-05-13. **v3** — supersedes the 2026-05-12 raw-contrast reading.
@@ -14,11 +14,11 @@ The decomposition is now a difference-in-differences against the count-matched
 Contrast `(remove::p::per-verb − remove::e::per-verb)` on
 `transitive :: with_context` NLL at the final epoch, per verb. Both arms
 remove the **same count** of laugh-instances; they differ only in *which kind*
-(item-specific p vs random non-preempting entrenchment). Indirect preemption is intact
+(verb-specific p vs random non-preempting entrenchment). Indirect preemption is intact
 in both arms.
 
 Result: `(p − e) > 0` for most verbs (entrenchment-removal more damaging
-than item-specific-p-removal per matched instance), with sign flips at `go` (highest
+than verb-specific-p-removal per matched instance), with sign flips at `go` (highest
 N_p) and `rise` (lowest N_p).
 
 **Item-specific/indirect/abstract decomposition (v3, DiD) — `lexical_vs_abstract_preemption.py`**
@@ -28,11 +28,11 @@ each scope). Five DiD contrasts per verb on the final-epoch
 
 | effect | DiD | what it tests |
 |---|---|---|
-| `item_specific_alone` | (except − all)_p − (except − all)_e | item-specific-p effect, indirect absent |
-| `indirect_alone`      | (per − all)_p   − (per − all)_e    | indirect-p effect, item-specific absent |
-| `abstract`           | all_e − all_p                       | combined item-specific + indirect preemption vs entrenchment |
-| `item_specific_given_indirect` | per_e − per_p             | marginal item-specific-p, indirect still on |
-| `indirect_given_item_specific` | except_e − except_p       | marginal indirect-p, item-specific still on |
+| `item_specific_alone` | (except − all)_p − (except − all)_e | verb-specific-p effect, indirect absent |
+| `indirect_alone`      | (per − all)_p   − (per − all)_e    | indirect-p effect, verb-specific absent |
+| `abstract`           | all_e − all_p                       | combined verb-specific + indirect preemption vs entrenchment |
+| `item_specific_given_indirect` | per_e − per_p             | marginal verb-specific-p, indirect still on |
+| `indirect_given_item_specific` | except_e − except_p       | marginal indirect-p, verb-specific still on |
 
 Sign convention: positive = preemption-specific effect beyond entrenchment
 (i.e., `e > p` on transitive NLL — removing p damaged anti-overgen more
@@ -54,7 +54,7 @@ contrast is net of entrenchment.
 Positive = preemption-specific effect beyond entrenchment.
 Stars: `***` p<.001, `**` p<.01, `*` p<.05, n.s. otherwise (mvt-adjusted).
 
-| Verb   | item-specific alone | indirect alone | abstract    | item-specific \| indirect | indirect \| item-specific |
+| Verb   | verb-specific alone | indirect alone | abstract    | verb-specific \| indirect | indirect \| verb-specific |
 |--------|--:|--:|--:|--:|--:|
 | blink  | −0.040 n.s.   | +0.152 ***     | +0.124 ***  | −0.027 n.s.     | +0.164 ***      |
 | cry    | +0.095 **     | +0.174 ***     | +0.024 n.s. | **−0.150 ***    | −0.071 **       |
@@ -69,7 +69,7 @@ Stars: `***` p<.001, `**` p<.01, `*` p<.05, n.s. otherwise (mvt-adjusted).
 
 Algebra: `abstract = item_specific_alone + indirect_given_item_specific = indirect_alone +
 item_specific_given_indirect`. Verified for every verb (laugh: 0.129 + (−0.108) =
-0.021 ≈ abstract 0.022). The abstract effect is the combined item-specific-plus-indirect
+0.021 ≈ abstract 0.022). The abstract effect is the combined verb-specific-plus-indirect
 effect, but this does not mean the two sources are assumed to add independently;
 the equality here is a contrast decomposition.
 
@@ -82,15 +82,15 @@ with its sign flipped — both compare `remove::p::per-verb` against the
 count-matched `remove::e::per-verb`, and both keep indirect preemption
 intact. So the `item_specific_given_indirect` column above is the original per-verb
 analysis restated inside the larger decomposition model. The original
-"entrenchment ≥ item-specific-p per matched instance" finding is not an independent
+"entrenchment ≥ verb-specific-p per matched instance" finding is not an independent
 replication by a second experiment — it is embedded in the decomposition.
 
 ### The genuinely new piece: `item_specific_alone` and `abstract`
 
-The DiD also asks *when no indirect signal is available, does item-specific p
+The DiD also asks *when no indirect signal is available, does verb-specific p
 preempt?* — that's `item_specific_alone`. Answer: yes for cry, laugh, sleep,
 smile (significant positive). But the same verbs go null or negative on
-`item_specific_given_indirect`. So **item-specific preemption has a real preemption-specific
+`item_specific_given_indirect`. So **verb-specific preemption has a real preemption-specific
 effect in isolation, but is redundant with indirect preemption when both
 are present.**
 
@@ -99,7 +99,7 @@ are present.**
 - Net `abstract` (preemption above entrenchment): significantly positive only
   for blink, sing (and the suspect rise). Null for go, cry, laugh, sleep,
   smile. Significantly **negative** for sneeze and look.
-- Where preemption-specific effects show up at all, item-specific and indirect signals are
+- Where preemption-specific effects show up at all, verb-specific and indirect signals are
   **substitutes**, not additive contributors. Having one is roughly as
   good as having both.
 - The "both signals matter and add up" story from v2 was largely an
@@ -109,12 +109,12 @@ are present.**
 - For **laugh specifically** (the focal verb): no preemption-specific net
   effect. Item-specific p preempts in isolation, but adds nothing on top of
   indirect; in fact `indirect_given_item_specific` is significantly negative,
-  suggesting having laugh's own item-specific p slightly *blunts* the indirect
+  suggesting having laugh's own verb-specific p slightly *blunts* the indirect
   signal it would otherwise enjoy.
 
 ## Verb-specific caveats (updated)
 
-- **sneeze** — anti-hypothesis across every contrast involving item-specific preemption.
+- **sneeze** — anti-hypothesis across every contrast involving verb-specific preemption.
   `abstract` strongly negative (−0.116 \*\*\*), `item_specific_given_indirect` strongly
   negative (−0.163 \*\*\*), `item_specific_alone` negative (−0.072 \*). Treat
   as an active counter-finding worth investigating, not noise.
@@ -125,18 +125,18 @@ are present.**
   explain. sleep does show `indirect_given_item_specific` significantly negative
   (−0.084 \*\*\*) — a milder version of laugh's interaction pattern.
 - **go** — `item_specific_given_indirect` modestly positive (+0.060 \*), all other
-  contrasts null. The v2 narrative ("item-specific p dominates for go because N_p
+  contrasts null. The v2 narrative ("verb-specific p dominates for go because N_p
   is large") was too strong; under DiD go contributes only a single
   modest preemption signal.
 - **rise** — strongly positive everywhere, but worksheet flags it as
   not-a-real-causative. Kept for comparison only; do not interpret.
 - **blink** — purely indirect: `indirect_alone` +0.152 \*\*\* and
-  `indirect_given_item_specific` +0.164 \*\*\*, all item-specific contrasts null. The net
+  `indirect_given_item_specific` +0.164 \*\*\*, all verb-specific contrasts null. The net
   positive signal rides entirely on cross-verb generalization.
 
 ## Suggested follow-ups
 
-- **Investigate sneeze.** Anti-preemption at every item-specific-involving contrast
+- **Investigate sneeze.** Anti-preemption at every verb-specific-involving contrast
   deserves a closer look. Check CHILDES "make sneeze" contexts — do its
   periphrastic causatives co-occur with patterns that *enable* transitive
   overgen rather than suppress it?
@@ -147,7 +147,7 @@ are present.**
   independent. Within-verb emmeans are fine; cross-verb pooled claims
   would want a different structure.
 - **`no_context` analogue.** Repeat the DiD on `transitive :: no_context`
-  to check whether the item-specific/indirect redundancy pattern is context-driven.
+  to check whether the verb-specific/indirect redundancy pattern is context-driven.
 
 ## Code changes (v3)
 
@@ -162,4 +162,4 @@ are present.**
 - Sign convention reversed from v2: positive = preemption-specific effect
   beyond entrenchment (= `e > p` direction; flips the original per-verb
   `(p − e)` sign).
-- Output figure bumped to `20260513.v3.item-specific-indirect-abstract-preemption-did_*.pdf`.
+- Output figure bumped to `20260513.v3.verb-specific-indirect-abstract-preemption-did_*.pdf`.

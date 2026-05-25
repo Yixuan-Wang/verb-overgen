@@ -16,9 +16,9 @@ preemption pressure on transitives with the mechanical loss of causative
 training data. Reported here for comparability with prior work; the
 first-difference proxy in the sibling script is the cleaner test.
 
-Expected direction of the contrast (remove::p − remove::e) on the gap:
-  NLL gap   < 0  (preemption release narrows the trans−caus gap)
-  SLOR gap  > 0  (preemption release narrows the (negative) trans−caus gap)
+Expected direction of the contrast (remove::e − remove::p) on the gap:
+  NLL gap   > 0  (preemption release narrows the trans−caus gap)
+  SLOR gap  < 0  (preemption release narrows the (negative) trans−caus gap)
 """
 
 import argparse
@@ -29,7 +29,7 @@ import matplotlib.pyplot as plt
 import polars as pl
 
 from verb_overgen.common.features import VERB_TARGET_FINALE
-from verb_overgen.exp.finale.util import despine
+from verb_overgen.exp.finale.util import ACL_COL_WIDTH, apply_acl_style, despine
 from verb_overgen.util.misc_util import adhoc
 from verb_overgen.util.r_arrow_bridge import RScript
 
@@ -37,9 +37,11 @@ TESTSET_DIR = Path("var/results/v2/testset")
 VERB_STATS_PATH = Path("var/results/verb_stats.parquet")
 FIGURE_DIR = Path("var/figures")
 
+apply_acl_style()
+
 METRICS: dict[str, tuple[str, str]] = {
-    "nll": ("gap_nll", "NLL gap"),
-    "slor": ("gap_slor", "SLOR gap"),
+    "nll": ("gap_nll", "NLL Difference"),
+    "slor": ("gap_slor", "SLOR Difference"),
 }
 
 _R_CONTRAST = RScript("""
@@ -59,7 +61,7 @@ entry <- function(df) {
     )
 
     model |>
-        emmeans(revpairwise ~ run_target | eval_verb) |>
+        emmeans(pairwise ~ run_target | eval_verb) |>
         (\(x) x$contrasts)() |>
         tidy()
 }
@@ -133,7 +135,8 @@ def _verb_order(
 def plot_forest(contrasts: pl.DataFrame, metric_label: str, out_path: Path) -> None:
     verbs = _verb_order(pl.col("count_causative"))
 
-    fig, ax = plt.subplots(figsize=(7, max(4, len(verbs) * 0.55)))
+    height = max(2.2, len(verbs) * 0.28)
+    fig, ax = plt.subplots(figsize=(ACL_COL_WIDTH, height))
 
     ordered_df = pl.DataFrame({"eval_verb": verbs}).join(contrasts, on="eval_verb", how="left")
     x = ordered_df["estimate"].to_numpy()
@@ -143,22 +146,22 @@ def plot_forest(contrasts: pl.DataFrame, metric_label: str, out_path: Path) -> N
         x=x,
         y=list(range(len(verbs))),
         xerr=xerr,
-        fmt="o",
-        capsize=4,
-        color="black",
-        markersize=6,
-        linewidth=1.5,
+        fmt="D",
+        capsize=2,
+        color="#74add1",
+        markersize=3,
+        linewidth=1,
     )
     ax.axvline(0, color="black", linestyle="--", linewidth=1, alpha=0.7)
     ax.set_yticks(range(len(verbs)))
-    ax.set_yticklabels(verbs)
+    ax.set_yticklabels([fr"$\textit{{{verb}}}$" for verb in verbs], fontstyle="italic")
 
     if metric_label.startswith("NLL"):
-        arrow_better = "↓"
+        arrow_better = r"$\uparrow$"
     else:
-        arrow_better = "↑"
+        arrow_better = r"$\downarrow$"
     ax.set_xlabel(
-        f"Contrast (remove::p − remove::e){arrow_better} [{metric_label}, transitive − causative]"
+        rf"{metric_label} Contrast (\textsc{{keep-p}} $-$ \textsc{{remove-p}}) {arrow_better}"
     )
     ax.set_ylabel("Verb")
     ax.grid(axis="x", linestyle=":", alpha=0.5)
@@ -173,12 +176,12 @@ def plot_forest(contrasts: pl.DataFrame, metric_label: str, out_path: Path) -> N
 
 def print_summary(contrasts: pl.DataFrame, metric_label: str, context_tag: str) -> None:
     print(f"\n{'=' * 64}")
-    print(f"  {metric_label}  —  contrast: remove::p − remove::e   (gap: transitive − causative)")
-    print(f"  Eval: {context_tag}  |  Scope: per-verb  |  Proxy: construction-preference")
+    print(f"  {metric_label}  —  contrast: remove::e − remove::p")
+    print(f"  Eval: transitive−causative gap :: {context_tag}  |  Scope: per-verb")
     if metric_label.startswith("NLL"):
-        print("  Hypothesis direction: contrast < 0 (preemption narrows the NLL gap)")
+        print("  Hypothesis direction: contrast > 0 (preemption reduces overgen.)")
     else:
-        print("  Hypothesis direction: contrast > 0 (preemption narrows the SLOR gap)")
+        print("  Hypothesis direction: contrast < 0 (preemption reduces overgen.)")
     print(f"{'=' * 64}")
     with pl.Config(tbl_rows=-1):
         print(contrasts.select("eval_verb", "estimate", "std.error", "statistic", "p.value").sort("eval_verb"))

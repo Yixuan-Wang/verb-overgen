@@ -47,7 +47,7 @@ CONTRASTS = [
     # ("contrast_1", "contrast 1", "#b22222", "s"),
     # ("contrast_2", "contrast 2", "#f4a0a0", "D"),
     ("abstract", "Abstract", "#2d3748", "o"),
-    ("item_specific_given_indirect", "Item-specific", "#74add1", "s"),
+    ("item_specific_given_indirect", "Verb-specific", "#74add1", "s"),
     # ("indirect_given_item_specific", "Indirect", "#f46d43", "^"),
 ]
 
@@ -190,7 +190,7 @@ def plot_forest(contrasts: pl.DataFrame, metric_label: str, out_path: Path) -> N
 def print_summary(contrasts: pl.DataFrame, metric_label: str, context_tag: str) -> None:
     direction = "↑" if metric_label == "NLL" else "↓"
     print(f"\n{'=' * 64}")
-    print(f"  {metric_label}  —  overall preemption effect: item-specific/indirect/abstract decomposition")
+    print(f"  {metric_label}  —  overall preemption effect: verb-specific/indirect/abstract decomposition")
     print(f"  Eval: transitive :: {context_tag}")
     print(f"  Direction: {direction} = preemption-specific effect beyond entrenchment")
     print(f"{'=' * 64}")
