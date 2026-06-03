@@ -3,6 +3,7 @@ Utilities for working with dependency parse as graphs.
 """
 
 from typing import Any
+from collections.abc import Sequence
 import networkx as nx
 import matplotlib.pyplot as plt
 import numpy as np
@@ -13,7 +14,7 @@ from verb_overgen.prep.lib.syntactic import Parse
 def create_parse_graph(parse: Parse):
     """
     Convert a parse in `dict` of adjacency lists to a `networkx.DiGraph` object.
-    <ROOT> is at node 0.
+    ROOT is at node 0.
     Words and relations are stored as node and edge attribute `"label"`, respectively.
 
     Args:
@@ -24,7 +25,7 @@ def create_parse_graph(parse: Parse):
     """
     g = nx.DiGraph([(fro, to) for fro, to in enumerate(parse["arc"], 1)])
     nx.set_node_attributes(g, {i: {"label": w} for i, w in enumerate(parse["word"], 1)})
-    nx.set_node_attributes(g, {0: {"label": "<ROOT>"}})
+    nx.set_node_attributes(g, {0: {"label": "ROOT"}})
     nx.set_edge_attributes(
         g,
         {
@@ -78,6 +79,7 @@ def inject_pos_to_graph(
 def draw_parse_graph(
     graph: nx.DiGraph,
     *,
+    figsize: Sequence[float] | None = None,
     highlight_node = lambda g, n, d: (None, None),
     highlight_edge = lambda g, u, v, d: (None, None),
 ):
@@ -90,17 +92,19 @@ def draw_parse_graph(
     Returns:
         matplotlib.figure.Figure: The figure containing the parse.
     """
-    # Position all nodes in a line (y=0) at integer x-coordinates
+    # Position all nodes in a line (y=0) at integer x-coordinates.
     pos = {i: (i, 0) for i in range(len(graph.nodes()))}
 # Draw the nodes, specifying the node label from the 'label' attribute
-    fig, ax = plt.subplots(figsize=(max(len(graph.nodes()), 12), 6))
+    if figsize is None:
+        figsize = (max(len(graph.nodes()), 12), 6)
+    fig, ax = plt.subplots(figsize=figsize)
     nx.draw_networkx_nodes(graph, pos, node_size=800, node_color="none")  # Border color
     _labels = nx.draw_networkx_labels(
         graph,
         pos,
         ax=ax,
         labels={i: graph.nodes[i]["label"] for i in graph.nodes()},
-        font_size=10,
+        font_size=plt.rcParams["font.size"],
         font_family=plt.rcParams["font.family"][0] if plt.rcParams["font.family"] else "sans-serif"
     )
 
@@ -114,9 +118,14 @@ def draw_parse_graph(
 
 
     # # Draw edges with an arc style
-    arc_rad = 0.3  # Controls curvature of the edges
+    arc_rad = 0.36  # Controls curvature of the edges
     edge_arcs = nx.draw_networkx_edges(
-        graph, pos, arrowstyle="->", arrowsize=15, connectionstyle=f"arc3,rad={arc_rad}"
+        graph,
+        pos,
+        arrowstyle="->",
+        arrowsize=12,
+        connectionstyle=f"arc3,rad={arc_rad}",
+        node_size=1400,
     )
 
     edge_labels = {(u, v): d["label"] for u, v, d in graph.edges(data=True)}
@@ -142,5 +151,6 @@ def draw_parse_graph(
             bbox=dict(boxstyle="round,pad=0.2", fc="white", ec="white", alpha=0.95),
         )
 
+    ax.margins(x=0.01, y=0.02)
     ax.axis("off")
     return fig
