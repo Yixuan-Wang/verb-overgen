@@ -103,7 +103,6 @@ prep = [
 [tool.ruff]
 lint.extend-select = ["ISC", "COM818"]
 lint.ignore = ["E402","E741", "F722", "F821"]
-lint.flake8-implicit-str-concat.allow-multiline = false
 line-length = 120
 
 [tool.pyright]
