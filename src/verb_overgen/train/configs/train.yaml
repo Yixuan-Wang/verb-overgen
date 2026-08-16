@@ -47,6 +47,8 @@ data:
     subset: full
     subset_seed: null
     subset_verb_of_interest: "laugh"
+    subset_verb_category_path: null
+    subset_verb_category: null
   # val:
     # path: "./data/scamp/scamp-postprocessed-tokenized.20260101.parquet"
     # batch_size: 512

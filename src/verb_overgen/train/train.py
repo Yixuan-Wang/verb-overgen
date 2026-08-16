@@ -233,6 +233,13 @@ class TrainingSession:
 
         return self.tokenizer
 
+    @staticmethod
+    def _load_verb_category(path: str, category: str) -> list[str]:
+        """Load the verb list for one category from a `pychildes_identify_verb_category` CSV."""
+        verbs = pl.read_csv(path).filter(pl.col("category") == category).get_column("verb").to_list()
+        logger.info(f"Loaded {len(verbs)} verbs in category {category!r} from {path}.")
+        return verbs
+
     def setup_datasets(
         self,
         *,
@@ -292,6 +299,24 @@ class TrainingSession:
         if subset == "substitute_preemption_on_verb" and not substitution_sources:
             raise ValueError("subset=substitute_preemption_on_verb requires at least one substitution source.")
 
+        subsets_by_verb_category = ("remove_preemption_on_verb_category", "remove_entrenchment_on_verb_category")
+
+        subset_verb_category_path: str | None = OmegaConf.select(
+            self.cfg, "data.train.subset_verb_category_path", default=None
+        )
+        subset_verb_category: str | None = OmegaConf.select(
+            self.cfg, "data.train.subset_verb_category", default=None
+        )
+        if (subset_verb_category_path or subset_verb_category) and subset not in subsets_by_verb_category:
+            raise ValueError(
+                f"subset_verb_category(_path) is set but subset={subset!r}. "
+                + f"Use one of {subsets_by_verb_category} when providing a verb category."
+            )
+        if subset in subsets_by_verb_category and not (subset_verb_category_path and subset_verb_category):
+            raise ValueError(
+                f"subset={subset!r} requires both subset_verb_category_path and subset_verb_category to be set."
+            )
+
         self.dataset_train = DatasetPyChildes.from_path(
             input_path_main=Path(self.cfg.data.train.path),
             input_path_annotation=Path(self.cfg.data.train.path_annotation),
@@ -322,6 +347,19 @@ class TrainingSession:
             case "remove_preemption_on_verb":
                 subset_verb = self.cfg.data.train.subset_verb_of_interest
                 remove_preemption_on_verb(self.dataset_train, verb=subset_verb)
+            case "remove_preemption_on_verb_category":
+                verbs_in_category = self._load_verb_category(
+                    cast(str, subset_verb_category_path), cast(str, subset_verb_category)
+                )
+                remove_preemption_on_verb(self.dataset_train, verb=verbs_in_category)
+            case "remove_entrenchment_on_verb_category":
+                verbs_in_category = self._load_verb_category(
+                    cast(str, subset_verb_category_path), cast(str, subset_verb_category)
+                )
+                randgen = torch.Generator()
+                if subset_seed is not None:
+                    randgen.manual_seed(subset_seed)
+                remove_entrenchment_on_verb(self.dataset_train, verb=verbs_in_category, randgen=randgen)
             case "remove_entrenchment_on_verb":
                 subset_verb = self.cfg.data.train.subset_verb_of_interest
                 randgen = torch.Generator()
