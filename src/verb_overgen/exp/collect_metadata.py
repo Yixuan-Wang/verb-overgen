@@ -60,6 +60,16 @@ MAP_INTERNAL_SUBSET_TO_CONDITION: Final[dict[str, dict[str, str]]] = {
         "scope": "per-verb",
         "target": "p", # Notice that e is removed besides p-substitute.
     },
+    "remove_preemption_on_verb_category": {
+        "manipulation": "remove",
+        "scope": "all-intrans-only",
+        "target": "p",
+    },
+    "remove_entrenchment_on_verb_category": {
+        "manipulation": "remove",
+        "scope": "all-intrans-only",
+        "target": "e",
+    },
 }
 
 def get_metadata(
