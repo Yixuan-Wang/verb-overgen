@@ -113,7 +113,7 @@ For verbs, we have 10 verbs of interest.
 
 ### Basics
 
-- We will use `with_context` as the primary eval condition. `no_context` will be a separate experiment.
+- We will use `no_context` as the primary eval condition. `with_context` will be a separate experiment.
 - Preemption effect on overgeneralization will always be measured on `transitive`s for the `remove` manipulation, since the transitives are the "overgeneralization" instances.
-- To measure the preemption effect, we will compare `remove :: p` with `remove :: e` on `transitive :: with_context`. If removing preempting instances increases the transitive NLL (or decreases the SLOR)
+- To measure the preemption effect, we will compare `remove :: p` with `remove :: e` on `transitive :: no_context`. If removing preempting instances increases the transitive NLL (or decreases the SLOR)
 than removing entrenchment-minus-preemption instances, then we have evidence for the preemption effect, and it attributes to preemption, not entrenchment.
