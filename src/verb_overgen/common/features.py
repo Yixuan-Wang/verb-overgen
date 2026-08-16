@@ -33,6 +33,8 @@ VERB_TARGET_17: Final[list[str]] = [
 
 VERB_TARGET_EXTENSION: Final[dict[str, list[str]]] = {
     "extended_intransitive_only": ["go", "come", "look", "stay", "talk", "listen", "cough", "blink"],
+    "extended_transitive_only": ["touch", "hit", "bite", "kiss", "feed", "tickle"],
+    "extended_alternating": ["grow", "open", "close", "roll", "break", "melt", "bounce"],
 }
 
 VERB_TARGET_10: Final[list[str]] = VERB_TARGET_5 + [
