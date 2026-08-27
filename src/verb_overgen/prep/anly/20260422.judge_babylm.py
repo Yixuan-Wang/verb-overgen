@@ -1,4 +1,5 @@
 import asyncio
+import re
 import polars as pl
 from openai import AsyncOpenAI
 from tqdm.asyncio import tqdm
@@ -6,6 +7,16 @@ from tqdm.asyncio import tqdm
 client = AsyncOpenAI(base_url="http://localhost:8000/v1", api_key="EMPTY")
 
 MODEL = "/model-weights/gemma-4-26B-A4B-it/"
+
+# Gemma 4 emits a channel-style output: <|channel>thought\n{reasoning}<channel|>{answer}
+# These are special tokens, so they must be requested with skip_special_tokens=False
+# or the <channel|> boundary is silently stripped and reasoning/answer become unsplittable.
+CHANNEL_RE = re.compile(r"^<\|channel>\w+\n.*?<channel\|>(?P<answer>.*)$", re.DOTALL)
+
+
+def extract_answer(raw_content: str) -> str:
+    m = CHANNEL_RE.match(raw_content)
+    return (m.group("answer") if m else raw_content).strip().lower()
 
 SYSTEM_PROMPT = (
     "You are a linguist. The user will give you a sentence. "
@@ -28,10 +39,16 @@ async def vet(index: int, text: str) -> tuple[int, bool | None]:
                 {"role": "user", "content": text},
             ],
             temperature=1.0,
+            top_p=0.95,
             max_tokens=4096,
-            extra_body={"chat_template_kwargs": {"enable_thinking": True}},
+            extra_body={
+                "top_k": 64,
+                "chat_template_kwargs": {"enable_thinking": True},
+                "skip_special_tokens": False,
+            },
         )
-        answer = (response.choices[0].message.content or "").strip().lower()
+        raw = response.choices[0].message.content or ""
+        answer = extract_answer(raw)
         return index, answer.endswith("yes")
     except Exception:
         return index, None

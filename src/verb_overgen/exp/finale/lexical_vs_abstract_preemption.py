@@ -39,7 +39,7 @@ apply_acl_style()
 
 METRICS: dict[str, tuple[str, str]] = {
     "nll": ("result_nll", "NLL"),
-    "slor": ("result_slor", "SLOR"),
+    # "slor": ("result_slor", "SLOR"),
 }
 
 # (effect key — must match R contrast names, display label, color)
@@ -89,7 +89,7 @@ entry <- function(df) {
 def load_data(testset_dir: Path, has_context: bool) -> pl.DataFrame:
     src = pl.scan_parquet(testset_dir / "*.parquet")
     final_epoch = pl.col("ckpt_epoch") == pl.col("ckpt_epoch").max()
-    common_cols = ["run_seed", "eval_verb", "eval_index_verb_context", "result_nll", "result_slor"]
+    common_cols = ["run_seed", "eval_verb", "eval_index_verb_context", "result_nll"] # , "result_slor"]
     common_filter = [
         pl.col("eval_construction") == "transitive",
         pl.col("eval_has_context") == has_context,
@@ -228,7 +228,7 @@ def main() -> None:
         print_summary(contrasts, metric_label, context_tag)
         out_path = (
             args.figure_dir
-            / f"20260513.v3.item-specific-indirect-abstract-preemption-did_{context_tag}_{metric_key}.pdf"
+            / f"20260823.testset-0818_wordlevel_{context_tag}_{metric_key}.pdf"
         )
         plot_forest(contrasts, metric_label, out_path)
 

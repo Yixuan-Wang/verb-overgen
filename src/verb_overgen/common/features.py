@@ -44,3 +44,11 @@ VERB_TARGET_10: Final[list[str]] = VERB_TARGET_5 + [
 VERB_TARGET_FINALE: Final[list[str]] = [
     "go", "laugh", "cry", "sleep", "sneeze", "smile"
 ]
+
+VERB_TARGET_CANDIDATE_V2_ALTERNATING: Final[list[str]] = [
+    "open", "break", "close", "roll", "move", "stop", "turn"
+]
+
+VERB_TARGET_CANDIDATE_V2_TRANSITIVE_ONLY = [
+    "feed", "touch", "hit", "push", "catch"
+]

@@ -226,7 +226,7 @@ def main() -> None:
         print_summary(contrasts, metric_label, context_tag)
         out_path = (
             args.figure_dir
-            / f"20260513.v3.item-specific-indirect-abstract-preemption-did_bpe_{context_tag}_{metric_key}.pdf"
+            / f"20260823.testset-0818_bpe_{context_tag}_{metric_key}.pdf"
         )
         plot_forest(contrasts, metric_label, out_path)
 

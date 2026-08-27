@@ -25,22 +25,24 @@ import polars as pl
 from loguru import logger
 from tokenizers import Tokenizer
 
-from verb_overgen.common.features import VERB_TARGET_17, VERB_TARGET_EXTENSION  # noqa: F401
+from verb_overgen.common.features import (  # noqa: F401
+    VERB_TARGET_17,
+    VERB_TARGET_CANDIDATE_V2_ALTERNATING,
+    VERB_TARGET_CANDIDATE_V2_TRANSITIVE_ONLY,
+    VERB_TARGET_EXTENSION,
+    VERB_TARGET_FINALE,
+)
 from verb_overgen.common.tokenize import BOS_TOKEN, EOS_TOKEN
 
-DEFAULT_TOKENIZER_PATH = Path("data/tokenizer/1024-wordlevel/tokenizer.json")
-DEFAULT_OUTPUT_PATH = Path("var/testset/testset_template_transitive-only.parquet")
-DEFAULT_VERBS = (
-    # VERB_TARGET_17
-    # + VERB_TARGET_EXTENSION["extended_intransitive_only"]
-    VERB_TARGET_EXTENSION["extended_transitive_only"]
-    # + VERB_TARGET_EXTENSION["extended_alternating"]
-)
+DEFAULT_TOKENIZER_PATH = Path("data/tokenizer/1024-bpe/tokenizer.json")
+DEFAULT_OUTPUT_PATH = Path("var/testset/testset_template_0818_bpe.parquet")
+DEFAULT_VERBS = VERB_TARGET_FINALE + VERB_TARGET_CANDIDATE_V2_ALTERNATING + VERB_TARGET_CANDIDATE_V2_TRANSITIVE_ONLY
 DEFAULT_BASE_URL = "http://127.0.0.1:30000/v1"
 DEFAULT_MODEL = "/model-weights/Qwen3.5-27B"
 DEFAULT_SELECTION_BATCH_SIZE = 64
 DEFAULT_OBJECT_CANDIDATES = 25
-DEFAULT_ALPHA = 0.3
+DEFAULT_OBJECT_CANDIDATES_NAMES = 13
+DEFAULT_ALPHA = 0.0
 
 _SELECT_SYSTEM = (
     "You are a child literature author tasked with choosing objects that fit naturally into "
@@ -51,7 +53,7 @@ _SELECT_SYSTEM = (
 # against the periphrastic-causative frame ("X makes Y touch") is itself ill-formed. Use the direct
 # transitive frame ("X touch Y") for those instead; the causative sentence is still generated afterward
 # from the same selected object so it can be used as a hard-negative test case.
-_TRANSITIVE_ONLY_VERBS: frozenset[str] = frozenset(VERB_TARGET_EXTENSION["extended_transitive_only"])
+_TRANSITIVE_ONLY_VERBS: frozenset[str] = frozenset(VERB_TARGET_EXTENSION["extended_transitive_only"]) | frozenset(VERB_TARGET_CANDIDATE_V2_TRANSITIVE_ONLY)
 
 _SELECT_USER = """\
 ### Instructions
@@ -59,6 +61,7 @@ Choose the object from the candidates below that best fits naturally with the su
 forming a plausible scene where {usage_description}, as in the sentence "{usage_example}".
 If the chosen object is a common noun, prefix it with the article "the" (e.g. "plant" -> "the plant"). \
 If the chosen object is a proper name (e.g. a person's name), do not add an article (e.g. "Tom" stays "Tom").
+Where the object is the one who will perform the action (not receive it), prefer a person or animal over an inanimate noun.
 If none of the candidates are suitable, answer with "none".
 
 ### Output Format
@@ -68,17 +71,25 @@ added if required, or "none".
 ### Input
 - Subject: {subject}
 - Verb: {verb}
-- Object Candidates: {object_candidates}
+- Object Candidates: {object_candidates}{already_selected_line}
 """
 
+_ALREADY_SELECTED_LINE = "\n- Already selected for this verb (prefer a different one): {objects}"
 
-def _select_user_prompt(*, subject: str, verb: str, object_candidates: list[str]) -> str:
+
+def _select_user_prompt(
+    *, subject: str, verb: str, object_candidates: list[str], already_selected: frozenset[str] = frozenset()
+) -> str:
     if verb in _TRANSITIVE_ONLY_VERBS:
         usage_description = "the subject directly performs the action described by the verb on the object"
-        usage_example = f"{subject} {verb} {{object}}"
+        usage_example = f"{subject} will {verb} {{object}}"
     else:
         usage_description = "the subject causes the object to perform the action described by the verb"
         usage_example = f"{subject} makes {{object}} {verb}"
+
+    already_selected_line = (
+        _ALREADY_SELECTED_LINE.format(objects=", ".join(sorted(already_selected))) if already_selected else ""
+    )
 
     return _SELECT_USER.format(
         usage_description=usage_description,
@@ -86,6 +97,7 @@ def _select_user_prompt(*, subject: str, verb: str, object_candidates: list[str]
         subject=subject,
         verb=verb,
         object_candidates=", ".join(object_candidates),
+        already_selected_line=already_selected_line,
     )
 
 
@@ -122,6 +134,7 @@ async def select_object_async(
     subject: str,
     verb: str,
     object_candidates: list[str],
+    already_selected: frozenset[str] = frozenset(),
 ) -> str | None:
     """Ask the LLM to pick the object candidate that best fits the subject and verb."""
     label = f"{subject}/{verb}"
@@ -133,7 +146,12 @@ async def select_object_async(
                 {"role": "system", "content": _SELECT_SYSTEM},
                 {
                     "role": "user",
-                    "content": _select_user_prompt(subject=subject, verb=verb, object_candidates=object_candidates),
+                    "content": _select_user_prompt(
+                        subject=subject,
+                        verb=verb,
+                        object_candidates=object_candidates,
+                        already_selected=already_selected,
+                    ),
                 },
             ],
             temperature=0.7,
@@ -175,13 +193,15 @@ def load_subjects(path_names: Path, path_pronouns: Path) -> tuple[list[str], np.
     return labels, weights
 
 
-def load_objects(path_names: Path, path_nouns: Path) -> tuple[list[str], np.ndarray]:
-    names = pl.read_csv(path_names).select("lemma", "count")
-    nouns = pl.read_csv(path_nouns).filter(pl.col("is_noun")).select("lemma", pl.col("count_is_noun").alias("count"))
-    dataset = pl.concat([names, nouns])
-    labels = dataset.get_column("lemma").to_list()
-    weights = dataset.get_column("count").to_numpy()
-    return labels, weights
+def load_objects(
+    path_names: Path, path_nouns: Path
+) -> tuple[tuple[list[str], np.ndarray], tuple[list[str], np.ndarray]]:
+    names_df = pl.read_csv(path_names).select("lemma", "count")
+    nouns_df = pl.read_csv(path_nouns).filter(pl.col("is_noun")).select("lemma", pl.col("count_is_noun").alias("count"))
+    return (
+        (names_df.get_column("lemma").to_list(), names_df.get_column("count").to_numpy()),
+        (nouns_df.get_column("lemma").to_list(), nouns_df.get_column("count").to_numpy()),
+    )
 
 
 async def generate_weighted_testset(
@@ -197,6 +217,7 @@ async def generate_weighted_testset(
     model: str = DEFAULT_MODEL,
     selection_batch_size: int = DEFAULT_SELECTION_BATCH_SIZE,
     object_candidates_count: int = DEFAULT_OBJECT_CANDIDATES,
+    object_name_candidates_count: int = DEFAULT_OBJECT_CANDIDATES_NAMES,
 ) -> pl.DataFrame:
     tokenizer = Tokenizer.from_file(str(tokenizer_path))
     bos_token_id = required_token_id(tokenizer, BOS_TOKEN)
@@ -209,11 +230,14 @@ async def generate_weighted_testset(
     subject_labels, subject_weights = load_subjects(
         Path("data/testset/gen/names.csv"), Path("data/testset/gen/top_pronouns.csv")
     )
-    object_labels, object_weights = load_objects(
+    (object_name_labels, object_name_weights), (object_noun_labels, object_noun_weights) = load_objects(
         Path("data/testset/gen/names.csv"), Path("data/testset/gen/top_nouns_v2.csv")
     )
     subject_weights = subject_weights.astype(float) ** alpha
-    object_weights = object_weights.astype(float) ** alpha
+    object_name_weights = object_name_weights.astype(float) ** alpha
+    object_noun_weights = object_noun_weights.astype(float) ** alpha
+
+    object_noun_candidates_count = object_candidates_count - object_name_candidates_count
 
     rng = np.random.default_rng(seed)
 
@@ -223,11 +247,13 @@ async def generate_weighted_testset(
     for verb_idx, verb in enumerate(verbs):
         logger.info(f"verb={verb!r}: starting ({verb_idx + 1}/{len(verbs)})")
         subject_sampler = WeightedSampler(subject_labels, subject_weights, rng)
-        object_sampler = WeightedSampler(object_labels, object_weights, rng)
+        object_name_sampler = WeightedSampler(object_name_labels, object_name_weights, rng)
+        object_noun_sampler = WeightedSampler(object_noun_labels, object_noun_weights, rng)
 
         accepted = 0
         attempts = 0
         seen_subjects: set[str] = set()
+        selected_objects: frozenset[str] = frozenset()
 
         while accepted < sentence_per_verb and attempts < max_attempts_per_verb:
             # Collect a batch of (subject, object candidates) rounds, then resolve the object in parallel.
@@ -239,7 +265,10 @@ async def generate_weighted_testset(
                     continue
                 seen_subjects.add(subject)
 
-                object_candidates = object_sampler.sample(object_candidates_count)
+                object_candidates = (
+                    object_name_sampler.sample(object_name_candidates_count)
+                    + object_noun_sampler.sample(object_noun_candidates_count)
+                )
                 rng.shuffle(object_candidates)
                 batch.append((subject, object_candidates))
 
@@ -250,7 +279,14 @@ async def generate_weighted_testset(
                 assert client is not None
                 chosen_objects = await asyncio.gather(
                     *[
-                        select_object_async(client, model, subject=subject, verb=verb, object_candidates=candidates)
+                        select_object_async(
+                            client,
+                            model,
+                            subject=subject,
+                            verb=verb,
+                            object_candidates=candidates,
+                            already_selected=selected_objects,
+                        )
                         for subject, candidates in batch
                     ]
                 )
@@ -314,6 +350,7 @@ async def generate_weighted_testset(
                         },
                     ]
                 )
+                selected_objects = selected_objects | {object_.removeprefix("the ").strip()}
                 accepted += 1
                 index_sentence += 2
 
@@ -337,7 +374,7 @@ def main() -> None:
     parser.add_argument("--tokenizer", type=Path, default=DEFAULT_TOKENIZER_PATH)
     parser.add_argument("--output", type=Path, default=DEFAULT_OUTPUT_PATH)
     parser.add_argument("--verbs", nargs="+", default=DEFAULT_VERBS)
-    parser.add_argument("--sentence-per-verb", type=int, default=100)
+    parser.add_argument("--sentence-per-verb", type=int, default=125)
     parser.add_argument("--max-attempts-per-verb", type=int, default=100_000)
     parser.add_argument(
         "--alpha",
@@ -375,7 +412,13 @@ def main() -> None:
         "--object-candidates",
         type=int,
         default=DEFAULT_OBJECT_CANDIDATES,
-        help="Number of weighted-sampled object candidates offered to the LLM per round (default: %(default)s).",
+        help="Total number of object candidates offered to the LLM per round (default: %(default)s).",
+    )
+    parser.add_argument(
+        "--object-candidates-names",
+        type=int,
+        default=DEFAULT_OBJECT_CANDIDATES_NAMES,
+        help="Number of those candidates drawn from the name pool; remainder come from the noun pool (default: %(default)s).",
     )
     args = parser.parse_args()
     if not (0 <= args.alpha <= 1):
@@ -394,6 +437,7 @@ def main() -> None:
             model=args.model,
             selection_batch_size=args.selection_batch_size,
             object_candidates_count=args.object_candidates,
+            object_name_candidates_count=args.object_candidates_names,
         )
     )
 
