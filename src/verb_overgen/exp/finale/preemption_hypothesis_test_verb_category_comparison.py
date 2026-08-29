@@ -5,18 +5,16 @@ Contrasts `remove::e::<scope>` against `remove::p::<scope>` on
 for three verb groups, at a chosen manipulation scope (`all-verb` or
 `all-intrans-only`):
 
-- The 6 original intransitive-only verbs (`VERB_TARGET_FINALE`), evaluated
-  against `var/results/v2/testset` (`all-verb`) or
-  `var/results/v2/testset_intransitive-only` (`all-intrans-only`).
-- The 7 new alternating verbs (`VERB_TARGET_EXTENSION["extended_alternating"]`),
-  evaluated against `var/results/v2/testset_template_alternating`.
-- The 6 new transitive-only verbs (`VERB_TARGET_EXTENSION["extended_transitive_only"]`),
-  evaluated against `var/results/v2/testset_template_transitive-only`.
+- The original intransitive-only verbs (`VERB_TARGET_FINALE`).
+- The alternating verbs (`VERB_TARGET_EXTENSION["extended_alternating"]`).
+- The transitive-only verbs (`VERB_TARGET_EXTENSION["extended_transitive_only"]`).
 
-The two new-verb testset directories hold both scopes: the `260712-verb-category`
-tag's `all-intrans-only` runs were appended into the same directories as the
-`all-verb` runs (`260410`/`260402-full`), so no scope->dir switch is needed for
-them (unlike the original group, which draws from two separate directories).
+All groups and both scopes are read from the single
+`var/results/v2/testset_0818_wordlevel` directory, which bundles every
+`run_scope` (distinguished by the `run_scope` column) for every eval verb.
+Only the new-group verbs that actually have testset runs there are shown
+(currently `break`, `close`, `open`, `roll` for alternating; `touch`, `hit`,
+`feed` for transitive-only).
 
 All three groups share the same scope's training runs (the manipulation
 removes causatives corpus-wide for `all-verb`, or across the intransitive-only
@@ -46,10 +44,9 @@ from verb_overgen.common.features import VERB_TARGET_EXTENSION, VERB_TARGET_FINA
 from verb_overgen.exp.finale.util import ACL_COL_WIDTH, apply_acl_style, despine
 from verb_overgen.util.r_arrow_bridge import RScript
 
-TESTSET_DIR = Path("var/results/v2/testset")
-TESTSET_INTRANS_ONLY_DIR = Path("var/results/v2/testset_intransitive-only")
-TESTSET_ALTERNATING_DIR = Path("var/results/v2/testset_template_alternating")
-TESTSET_TRANSITIVE_ONLY_DIR = Path("var/results/v2/testset_template_transitive-only")
+# All groups and scopes now live in this one directory, distinguished by the
+# `run_scope` column rather than by separate directories.
+TESTSET_DIR = Path("var/results/v2/testset_0818_wordlevel")
 VERB_STATS_PATH = Path("var/results/verb_stats.parquet")
 FIGURE_DIR = Path("var/figures")
 
@@ -58,21 +55,17 @@ apply_acl_style()
 VERB_TARGET_ALTERNATING = VERB_TARGET_EXTENSION["extended_alternating"]
 VERB_TARGET_TRANSITIVE_ONLY = VERB_TARGET_EXTENSION["extended_transitive_only"]
 
-# scope -> source dir for the original-verb group (the new-verb groups' source
-# dirs are the same for every scope, since both tags were collected into them).
-ORIGINAL_GROUP_DIR_BY_SCOPE: dict[str, Path] = {
-    "all-verb": TESTSET_DIR,
-    "all-intrans-only": TESTSET_INTRANS_ONLY_DIR,
-}
+SCOPES = ["all-verb", "all-intrans-only"]
 
 
-def get_groups(scope: str) -> list[tuple[str, Path, list[str], str, str]]:
-    # (group key, source dir, verbs, display label, color)
+def get_groups() -> list[tuple[str, list[str], str, str]]:
+    # (group key, verbs, display label, color)
     return [
-        ("original", ORIGINAL_GROUP_DIR_BY_SCOPE[scope], VERB_TARGET_FINALE, "Original", "#74add1"),
-        ("alternating", TESTSET_ALTERNATING_DIR, VERB_TARGET_ALTERNATING, "Alternating", "#f46d43"),
-        ("transitive-only", TESTSET_TRANSITIVE_ONLY_DIR, VERB_TARGET_TRANSITIVE_ONLY, "Transitive-only", "#009e73"),
+        ("original", VERB_TARGET_FINALE, "Original", "#74add1"),
+        ("alternating", VERB_TARGET_ALTERNATING, "Alternating", "#f46d43"),
+        ("transitive-only", VERB_TARGET_TRANSITIVE_ONLY, "Transitive-only", "#009e73"),
     ]
+
 
 _R_CONTRAST = RScript("""
 library(arrow); library(dplyr); library(lme4); library(emmeans); library(broom)
@@ -100,10 +93,10 @@ entry <- function(df) {
 COMMON_COLS = ["run_target", "run_seed", "eval_verb", "eval_index_verb_context", "result_nll"]
 
 
-def load_data(scope: str, groups: list[tuple[str, Path, list[str], str, str]]) -> pl.DataFrame:
-    def load_group(source_dir: Path, verbs: list[str]) -> pl.DataFrame:
+def load_data(scope: str, groups: list[tuple[str, list[str], str, str]]) -> pl.DataFrame:
+    def load_group(verbs: list[str]) -> pl.DataFrame:
         df = (
-            pl.scan_parquet(source_dir / "*.parquet")
+            pl.scan_parquet(TESTSET_DIR / "*.parquet")
             .filter(
                 pl.col("run_manipulation") == "remove",
                 pl.col("run_scope") == scope,
@@ -117,10 +110,10 @@ def load_data(scope: str, groups: list[tuple[str, Path, list[str], str, str]]) -
             .collect()
         )
         assert isinstance(df, pl.DataFrame)
-        assert len(df) > 0, f"No rows loaded from {source_dir} for verbs {verbs}"
+        assert len(df) > 0, f"No rows loaded from {TESTSET_DIR} for scope {scope}, verbs {verbs}"
         return df
 
-    return pl.concat([load_group(source_dir, verbs) for _, source_dir, verbs, *_ in groups])
+    return pl.concat([load_group(verbs) for _, verbs, *_ in groups])
 
 
 def run_contrast(df: pl.DataFrame) -> pl.DataFrame:
@@ -140,10 +133,9 @@ def _verb_order(verbs: list[str]) -> list[str]:
     )
 
 
-def plot_forest(
-    contrasts: pl.DataFrame, out_path: Path, groups: list[tuple[str, Path, list[str], str, str]]
-) -> None:
-    group_verbs = [(label, color, _verb_order(verbs)) for _, _, verbs, label, color in groups]
+def plot_forest(contrasts: pl.DataFrame, out_path: Path, groups: list[tuple[str, list[str], str, str]]) -> None:
+    present = set(contrasts["eval_verb"].to_list())
+    group_verbs = [(label, color, [v for v in _verb_order(verbs) if v in present]) for _, verbs, label, color in groups]
     verbs = [v for _, _, vs in group_verbs for v in vs]
 
     height = max(2.6, len(verbs) * 0.3 + 0.6)
@@ -209,7 +201,7 @@ def main() -> None:
     parser.add_argument("--figure-dir", type=Path, default=FIGURE_DIR)
     parser.add_argument(
         "--scope",
-        choices=sorted(ORIGINAL_GROUP_DIR_BY_SCOPE),
+        choices=SCOPES,
         default="all-verb",
         help="Manipulation scope to contrast (default: %(default)s)",
     )
@@ -217,16 +209,20 @@ def main() -> None:
 
     os.chdir(os.environ.get("PWD", "."))
 
-    groups = get_groups(args.scope)
+    groups = get_groups()
 
     print("Loading testset data...")
     df = load_data(args.scope, groups)
-    print(f"  {len(df):,} rows  |  {df['eval_verb'].n_unique()} verbs  |  conditions: {sorted(df['run_target'].unique())}")
+    print(
+        f"  {len(df):,} rows  |  {df['eval_verb'].n_unique()} verbs  |  conditions: {sorted(df['run_target'].unique())}"
+    )
 
     contrasts = run_contrast(df)
     print_summary(contrasts, args.scope)
 
-    out_path = args.figure_dir / f"20260713.preemption-hypothesis-verb-category-comparison_{args.scope}_no_context_nll.pdf"
+    out_path = (
+        args.figure_dir / f"20260829.preemption-hypothesis-verb-category-comparison_{args.scope}_no_context_nll.pdf"
+    )
     plot_forest(contrasts, out_path, groups)
 
 

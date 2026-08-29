@@ -1,18 +1,17 @@
 """Print a Markdown table of the verb-category preemption contrast, no figure.
 
-For the two most representative verb groups — the 6 original intransitive-only
-verbs (`VERB_TARGET_FINALE`) and the 7 new alternating verbs
+For the two most representative verb groups — the original intransitive-only
+verbs (`VERB_TARGET_FINALE`) and the alternating verbs
 (`VERB_TARGET_EXTENSION["extended_alternating"]`) — contrasts
 `remove::e::<scope>` against `remove::p::<scope>` on `transitive :: no_context`
 NLL at the final training epoch, per eval verb, for both `all-verb` and
 `all-intrans-only` scopes side by side.
 
-The original group's `all-verb` arm comes from `var/results/v2/testset`, its
-`all-intrans-only` arm from `var/results/v2/testset_intransitive-only`. The
-alternating group draws both scopes from
-`var/results/v2/testset_template_alternating` (both tags were collected into
-the same directory). NLL-only (alternating testset has no SLOR) and
-`no_context`-only (alternating testset has no `with_context` items).
+Both groups and both scopes are read from the single
+`var/results/v2/testset_0818_wordlevel` directory, which now bundles every
+`run_scope` for every eval verb. Only the alternating verbs that actually have
+testset runs there are shown (`grow`, `melt`, `bounce` currently have none).
+NLL-only, `no_context`-only.
 
 Preemption hypothesis: removing the preempting causatives (p) should increase
 overgeneralization more than removing entrenchment-minus-preemption (e).
@@ -28,21 +27,14 @@ import polars as pl
 from verb_overgen.common.features import VERB_TARGET_EXTENSION, VERB_TARGET_FINALE
 from verb_overgen.util.r_arrow_bridge import RScript
 
-TESTSET_DIR = Path("var/results/v2/testset")
-TESTSET_INTRANS_ONLY_DIR = Path("var/results/v2/testset_intransitive-only")
-TESTSET_ALTERNATING_DIR = Path("var/results/v2/testset_template_alternating")
+# All groups and scopes now live in this one directory, distinguished by the
+# `run_scope` column rather than by separate directories.
+TESTSET_DIR = Path("var/results/v2/testset_0818_wordlevel")
 VERB_STATS_PATH = Path("var/results/verb_stats.parquet")
 
 VERB_TARGET_ALTERNATING = VERB_TARGET_EXTENSION["extended_alternating"]
 
 SCOPES = ["all-verb", "all-intrans-only"]
-
-# scope -> source dir for the original-verb group (the alternating-verb group's
-# source dir is the same for every scope, since both tags were collected into it).
-ORIGINAL_GROUP_DIR_BY_SCOPE: dict[str, Path] = {
-    "all-verb": TESTSET_DIR,
-    "all-intrans-only": TESTSET_INTRANS_ONLY_DIR,
-}
 
 # (group key, display label, verbs)
 GROUPS = [
@@ -77,12 +69,9 @@ COMMON_COLS = ["run_target", "run_seed", "eval_verb", "eval_index_verb_context",
 
 
 def load_and_contrast(scope: str) -> pl.DataFrame:
-    def source_dir(group_key: str) -> Path:
-        return ORIGINAL_GROUP_DIR_BY_SCOPE[scope] if group_key == "original" else TESTSET_ALTERNATING_DIR
-
-    def load_group(group_key: str, verbs: list[str]) -> pl.DataFrame:
+    def load_group(verbs: list[str]) -> pl.DataFrame:
         df = (
-            pl.scan_parquet(source_dir(group_key) / "*.parquet")
+            pl.scan_parquet(TESTSET_DIR / "*.parquet")
             .filter(
                 pl.col("run_manipulation") == "remove",
                 pl.col("run_scope") == scope,
@@ -96,10 +85,10 @@ def load_and_contrast(scope: str) -> pl.DataFrame:
             .collect()
         )
         assert isinstance(df, pl.DataFrame)
-        assert len(df) > 0, f"No rows loaded from {source_dir(group_key)} for verbs {verbs}"
+        assert len(df) > 0, f"No rows loaded from {TESTSET_DIR} for scope {scope}, verbs {verbs}"
         return df
 
-    df = pl.concat([load_group(key, verbs) for key, _, verbs in GROUPS])
+    df = pl.concat([load_group(verbs) for _, _, verbs in GROUPS])
 
     contrasts = _R_CONTRAST.call_table(
         df.rename({"result_nll": "metric"}).select(
@@ -130,12 +119,13 @@ def _cell(row: dict) -> str:
 
 def print_table(contrasts: pl.DataFrame) -> None:
     by_verb_scope = {(r["eval_verb"], r["scope"]): r for r in contrasts.iter_rows(named=True)}
+    verbs_present = {verb for verb, _ in by_verb_scope}
 
     print("| Verb | All-verb Δ (SE) | All-intrans-only Δ (SE) | Sign |")
     print("|---|---|---|---|")
     for _, group_label, verbs in GROUPS:
         print(f"| **{group_label}** | | | |")
-        for verb in _verb_order(verbs):
+        for verb in (v for v in _verb_order(verbs) if v in verbs_present):
             row_all_verb = by_verb_scope[(verb, "all-verb")]
             row_intrans = by_verb_scope[(verb, "all-intrans-only")]
 
@@ -153,8 +143,10 @@ def print_table(contrasts: pl.DataFrame) -> None:
             print(f"| {verb} | {_cell(row_all_verb)} | {_cell(row_intrans)} | {sign} |")
 
     print()
-    print("*** p<.001, ** p<.01, * p<.05. Contrast: remove::e − remove::p, NLL, "
-          "transitive::no_context, final epoch. Positive = consistent with preemption prediction.")
+    print(
+        "*** p<.001, ** p<.01, * p<.05. Contrast: remove::e − remove::p, NLL, "
+        "transitive::no_context, final epoch. Positive = consistent with preemption prediction."
+    )
 
 
 def main() -> None:

@@ -2,13 +2,14 @@
 
 For each scope in {per-verb, all-verb, all-intrans-only}, contrasts
 `remove::e::scope` against `remove::p::scope` (both count-matched) on
-`transitive :: with_context` or `transitive :: no_context` NLL at the final
-training epoch, per verb, and plots the three scopes side by side.
+`transitive :: no_context` NLL at the final training epoch, per verb, and
+plots the three scopes side by side.
 
-`per-verb` and `all-verb` runs come from `var/results/v2/testset`.
-`all-intrans-only` runs (tag `260712-verb-category`) come from
-`var/results/v2/testset_intransitive-only` and were collected without SLOR,
-so this analysis is NLL-only.
+All three scopes are read from the single
+`var/results/v2/testset_0818_wordlevel` directory, which bundles every
+`run_scope` (distinguished by the `run_scope` column) for every eval verb.
+That testset has no `with_context` items and no SLOR, so this analysis is
+NLL-only and `no_context`-only.
 
 Preemption hypothesis: removing the preempting causatives (p) should increase
 overgeneralization more than removing entrenchment-minus-preemption (e).
@@ -27,18 +28,19 @@ from verb_overgen.common.features import VERB_TARGET_FINALE
 from verb_overgen.exp.finale.util import ACL_COL_WIDTH, apply_acl_style, despine
 from verb_overgen.util.r_arrow_bridge import RScript
 
-TESTSET_DIR = Path("var/results/v2/testset")
-TESTSET_INTRANS_ONLY_DIR = Path("var/results/v2/testset_intransitive-only")
+# All scopes now live in this one directory, distinguished by the `run_scope`
+# column rather than by separate directories.
+TESTSET_DIR = Path("var/results/v2/testset_0818_wordlevel")
 VERB_STATS_PATH = Path("var/results/verb_stats.parquet")
 FIGURE_DIR = Path("var/figures")
 
 apply_acl_style()
 
-# (scope, source dir, display label, color, marker)
+# (scope, display label, color, marker)
 SCOPES = [
-    ("per-verb", TESTSET_DIR, "Per-verb", "#74add1", "s"),
-    ("all-verb", TESTSET_DIR, "All-verb", "#2d3748", "o"),
-    ("all-intrans-only", TESTSET_INTRANS_ONLY_DIR, "All-intrans-only", "#f46d43", "^"),
+    ("per-verb", "Per-verb", "#74add1", "s"),
+    ("all-verb", "All-verb", "#2d3748", "o"),
+    ("all-intrans-only", "All-intrans-only", "#f46d43", "^"),
 ]
 
 _R_CONTRAST = RScript("""
@@ -75,17 +77,17 @@ entry <- function(df) {
 """)
 
 
-def load_data(has_context: bool) -> pl.DataFrame:
+def load_data() -> pl.DataFrame:
     common_cols = ["run_seed", "eval_verb", "eval_index_verb_context", "result_nll"]
     common_filter = [
         pl.col("eval_construction") == "transitive",
-        pl.col("eval_has_context") == has_context,
+        pl.col("eval_has_context") == False,  # noqa: E712
         pl.col("eval_verb").is_in(VERB_TARGET_FINALE),
         pl.col("ckpt_epoch") == pl.col("ckpt_epoch").max(),
     ]
 
-    def remove_arm(scope: str, source_dir: Path, target: str) -> pl.LazyFrame:
-        src = pl.scan_parquet(source_dir / "*.parquet")
+    def remove_arm(scope: str, target: str) -> pl.LazyFrame:
+        src = pl.scan_parquet(TESTSET_DIR / "*.parquet")
         filters = [
             pl.col("run_manipulation") == "remove",
             pl.col("run_scope") == scope,
@@ -103,11 +105,7 @@ def load_data(has_context: bool) -> pl.DataFrame:
             )
         )
 
-    arms = [
-        remove_arm(scope, source_dir, target)
-        for scope, source_dir, *_ in SCOPES
-        for target in ("p", "e")
-    ]
+    arms = [remove_arm(scope, target) for scope, *_ in SCOPES for target in ("p", "e")]
     return pl.concat([a.collect() for a in arms])
 
 
@@ -137,7 +135,7 @@ def plot_forest(contrasts: pl.DataFrame, out_path: Path) -> None:
     height = max(2.8, len(verbs) * 0.35)
     fig, ax = plt.subplots(figsize=(ACL_COL_WIDTH, height))
 
-    for idx, (scope_key, _, scope_label, color, marker) in enumerate(SCOPES):
+    for idx, (scope_key, scope_label, color, marker) in enumerate(SCOPES):
         sub = contrasts.filter(pl.col("scope") == scope_key)
         ordered = pl.DataFrame({"eval_verb": verbs}).join(sub, on="eval_verb", how="left")
         x = ordered["estimate"].to_numpy()
@@ -158,7 +156,7 @@ def plot_forest(contrasts: pl.DataFrame, out_path: Path) -> None:
 
     ax.axvline(0, color="black", linestyle="--", linewidth=1, alpha=0.7)
     ax.set_yticks(range(len(verbs)))
-    ax.set_yticklabels([fr"$\textit{{{verb}}}$" for verb in verbs])
+    ax.set_yticklabels([rf"$\textit{{{verb}}}$" for verb in verbs])
 
     ax.set_xlabel(r"NLL Contrast (\textsc{keep-p} $-$ \textsc{remove-p}) $\uparrow$")
     ax.set_ylabel("Verb")
@@ -176,10 +174,10 @@ def plot_forest(contrasts: pl.DataFrame, out_path: Path) -> None:
     print(f"Figure saved: {out_path}")
 
 
-def print_summary(contrasts: pl.DataFrame, context_tag: str) -> None:
+def print_summary(contrasts: pl.DataFrame) -> None:
     print(f"\n{'=' * 64}")
     print("  NLL  —  preemption hypothesis contrast across scopes")
-    print(f"  Eval: transitive :: {context_tag}")
+    print("  Eval: transitive :: no_context")
     print("  Contrast: remove::e − remove::p (per scope)")
     print("  Hypothesis direction: contrast > 0 (preemption reduces overgen.)")
     print(f"{'=' * 64}")
@@ -194,27 +192,19 @@ def print_summary(contrasts: pl.DataFrame, context_tag: str) -> None:
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--figure-dir", type=Path, default=FIGURE_DIR)
-    parser.add_argument(
-        "--no-context",
-        action="store_true",
-        help="Use no_context eval condition instead of with_context (default: with_context)",
-    )
     args = parser.parse_args()
 
     os.chdir(os.environ.get("PWD", "."))
 
-    has_context = not args.no_context
-    context_tag = "no_context" if args.no_context else "with_context"
-
     print("Loading testset data...")
-    df = load_data(has_context)
+    df = load_data()
     cells = sorted({(s, t) for s, t in zip(df["scope"], df["target"], strict=True)})
     print(f"  {len(df):,} rows  |  {df['eval_verb'].n_unique()} verbs  |  cells: {cells}")
 
     contrasts = run_contrast(df)
-    print_summary(contrasts, context_tag)
+    print_summary(contrasts)
 
-    out_path = args.figure_dir / f"20260713.preemption-hypothesis-scope-comparison_{context_tag}_nll.pdf"
+    out_path = args.figure_dir / "20260829.preemption-hypothesis-scope-comparison_no_context_nll.pdf"
     plot_forest(contrasts, out_path)
 
 

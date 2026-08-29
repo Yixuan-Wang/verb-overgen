@@ -4,18 +4,15 @@ Companion to `preemption_hypothesis_test_verb_category_comparison`: that script'
 count-matched contrast `remove::e - remove::p` is a difference of two removal
 arms, so its sign is ambiguous (see `preemption_hypothesis_test_baseline_decomposition`
 for the general argument). This script anchors both arms on `none` instead, for
-each of the three verb groups (original intransitive-only, new alternating, new
-transitive-only), at a chosen manipulation scope (`all-verb` or `all-intrans-only`):
+each of the three verb groups (original intransitive-only, alternating,
+transitive-only), at a chosen manipulation scope (`all-verb` or `all-intrans-only`).
 
-- The 6 original intransitive-only verbs (`VERB_TARGET_FINALE`); `none` and the
-  `all-verb` arm come from `var/results/v2/testset`, the `all-intrans-only` arm
-  from `var/results/v2/testset_intransitive-only` (that directory has no `none`
-  baseline of its own — `none` is scope-independent, so it is always read from
-  the main `testset` directory, matching `preemption_hypothesis_test_baseline_decomposition`).
-- The 7 new alternating verbs; both `none` and both scopes' `remove` arms live
-  in the same directory, `var/results/v2/testset_template_alternating`.
-- The 6 new transitive-only verbs; likewise all in
-  `var/results/v2/testset_template_transitive-only`.
+All groups, both scopes' `remove` arms, and the `none` baseline are read from the
+single `var/results/v2/testset_0818_wordlevel` directory, which bundles every
+`run_scope` (distinguished by the `run_scope` column) for every eval verb. Only
+the new-group verbs that actually have testset runs there are shown (currently
+`break`, `close`, `open`, `roll` for alternating; `touch`, `hit`, `feed` for
+transitive-only).
 
 None of the three groups' own training data is touched by a *different* group's
 manipulation, so any shift in a group untouched by the manipulation (e.g. the
@@ -46,10 +43,9 @@ from verb_overgen.common.features import VERB_TARGET_EXTENSION, VERB_TARGET_FINA
 from verb_overgen.exp.finale.util import ACL_COL_WIDTH, apply_acl_style, despine
 from verb_overgen.util.r_arrow_bridge import RScript
 
-TESTSET_DIR = Path("var/results/v2/testset")
-TESTSET_INTRANS_ONLY_DIR = Path("var/results/v2/testset_intransitive-only")
-TESTSET_ALTERNATING_DIR = Path("var/results/v2/testset_template_alternating")
-TESTSET_TRANSITIVE_ONLY_DIR = Path("var/results/v2/testset_template_transitive-only")
+# All groups, scopes, and the `none` baseline now live in this one directory,
+# distinguished by the `run_scope` / `run_manipulation` columns.
+TESTSET_DIR = Path("var/results/v2/testset_0818_wordlevel")
 VERB_STATS_PATH = Path("var/results/verb_stats.parquet")
 FIGURE_DIR = Path("var/figures")
 
@@ -58,30 +54,17 @@ apply_acl_style()
 VERB_TARGET_ALTERNATING = VERB_TARGET_EXTENSION["extended_alternating"]
 VERB_TARGET_TRANSITIVE_ONLY = VERB_TARGET_EXTENSION["extended_transitive_only"]
 
-# scope -> source dir for the original-verb group's `remove` arm (the new-verb
-# groups' remove-arm dir is the same for every scope). `none` is always read
-# from TESTSET_DIR for the original group, and from the group's own dir
-# otherwise (see module docstring).
-ORIGINAL_GROUP_REMOVE_DIR_BY_SCOPE: dict[str, Path] = {
-    "all-verb": TESTSET_DIR,
-    "all-intrans-only": TESTSET_INTRANS_ONLY_DIR,
-}
+SCOPES = ["all-verb", "all-intrans-only"]
 
-# (group key, remove-arm dir, none-arm dir, verbs, display label)
-GroupSpec = tuple[str, Path, Path, list[str], str]
+# (group key, verbs, display label)
+GroupSpec = tuple[str, list[str], str]
 
 
-def get_groups(scope: str) -> list[GroupSpec]:
+def get_groups() -> list[GroupSpec]:
     return [
-        ("original", ORIGINAL_GROUP_REMOVE_DIR_BY_SCOPE[scope], TESTSET_DIR, VERB_TARGET_FINALE, "Original"),
-        ("alternating", TESTSET_ALTERNATING_DIR, TESTSET_ALTERNATING_DIR, VERB_TARGET_ALTERNATING, "Alternating"),
-        (
-            "transitive-only",
-            TESTSET_TRANSITIVE_ONLY_DIR,
-            TESTSET_TRANSITIVE_ONLY_DIR,
-            VERB_TARGET_TRANSITIVE_ONLY,
-            "Transitive-only",
-        ),
+        ("original", VERB_TARGET_FINALE, "Original"),
+        ("alternating", VERB_TARGET_ALTERNATING, "Alternating"),
+        ("transitive-only", VERB_TARGET_TRANSITIVE_ONLY, "Transitive-only"),
     ]
 
 
@@ -127,7 +110,7 @@ def load_data(scope: str, groups: list[GroupSpec]) -> pl.DataFrame:
         pl.col("ckpt_epoch") == pl.col("ckpt_epoch").max(),
     ]
 
-    def load_arm(source_dir: Path, verbs: list[str], target: str) -> pl.DataFrame:
+    def load_arm(verbs: list[str], target: str) -> pl.DataFrame:
         filters = [*common_filter, pl.col("eval_verb").is_in(verbs)]
         if target == "none":
             filters.append(pl.col("run_manipulation") == "none")
@@ -138,7 +121,7 @@ def load_data(scope: str, groups: list[GroupSpec]) -> pl.DataFrame:
                 pl.col("run_target") == target,
             ]
         df = (
-            pl.scan_parquet(source_dir / "*.parquet")
+            pl.scan_parquet(TESTSET_DIR / "*.parquet")
             .filter(*filters)
             .select(COMMON_COLS[1:])
             .with_columns(pl.lit(target).alias("target"))
@@ -146,13 +129,13 @@ def load_data(scope: str, groups: list[GroupSpec]) -> pl.DataFrame:
             .collect()
         )
         assert isinstance(df, pl.DataFrame)
-        assert len(df) > 0, f"No rows loaded from {source_dir} for target={target!r}, verbs={verbs}"
+        assert len(df) > 0, f"No rows loaded from {TESTSET_DIR} for target={target!r}, scope={scope!r}, verbs={verbs}"
         return df
 
     arms = []
-    for _, remove_dir, none_dir, verbs, _ in groups:
-        arms.append(load_arm(none_dir, verbs, "none"))
-        arms += [load_arm(remove_dir, verbs, target) for target, *_ in TARGETS]
+    for _, verbs, _ in groups:
+        arms.append(load_arm(verbs, "none"))
+        arms += [load_arm(verbs, target) for target, *_ in TARGETS]
     return pl.concat(arms)
 
 
@@ -171,7 +154,8 @@ def _verb_order(verbs: list[str]) -> list[str]:
 
 
 def plot_decomposition(contrasts: pl.DataFrame, out_path: Path, groups: list[GroupSpec]) -> None:
-    group_blocks = [(label, _verb_order(verbs)) for _, _, _, verbs, label in groups]
+    present = set(contrasts["eval_verb"].to_list())
+    group_blocks = [(label, [v for v in _verb_order(verbs) if v in present]) for _, verbs, label in groups]
     verbs = [v for _, vs in group_blocks for v in vs]
     dodge = 0.7 / len(TARGETS)
 
@@ -258,7 +242,7 @@ def main() -> None:
     parser.add_argument("--figure-dir", type=Path, default=FIGURE_DIR)
     parser.add_argument(
         "--scope",
-        choices=sorted(ORIGINAL_GROUP_REMOVE_DIR_BY_SCOPE),
+        choices=SCOPES,
         default="all-verb",
         help="Manipulation scope to contrast (default: %(default)s)",
     )
@@ -266,7 +250,7 @@ def main() -> None:
 
     os.chdir(os.environ.get("PWD", "."))
 
-    groups = get_groups(args.scope)
+    groups = get_groups()
 
     print("Loading testset data...")
     df = load_data(args.scope, groups)
@@ -277,7 +261,7 @@ def main() -> None:
 
     out_path = (
         args.figure_dir
-        / f"20260713.preemption-hypothesis-verb-category-baseline-decomposition_{args.scope}_no_context_nll.pdf"
+        / f"20260829.preemption-hypothesis-verb-category-baseline-decomposition_{args.scope}_no_context_nll.pdf"
     )
     plot_decomposition(contrasts, out_path, groups)
 
