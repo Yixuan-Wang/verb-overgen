@@ -20,7 +20,7 @@ from verb_overgen.train.lib.validate import (
 
 ROOT_TRAIN = "var/train"
 
-TESTSET_INPUT_PATH = Path("./data/testset/output/testset_gemini.20260402T2045.parquet")
+TESTSET_INPUT_PATH = Path("./data/testset/output/testset_template_0818_wordlevel_pp.parquet")
 TOKEN_ID_BOS = 1
 
 

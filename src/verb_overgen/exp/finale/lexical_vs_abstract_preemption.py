@@ -18,6 +18,7 @@ entrenchment. (Equivalently, the sign convention reverses the original
 per-verb contrast's `p − e`: positive here = `e > p`, the
 preemption-hypothesis-supporting direction.)
 """
+from collections.abc import Iterable
 
 import argparse
 import os
@@ -27,11 +28,16 @@ import matplotlib.pyplot as plt
 import numpy as np
 import polars as pl
 
-from verb_overgen.common.features import VERB_TARGET_FINALE
+from verb_overgen.common.features import VERB_TARGET_FINALE, VERB_TARGET_CANDIDATE_V2_ALTERNATING
 from verb_overgen.exp.finale.util import ACL_COL_WIDTH, apply_acl_style, despine
 from verb_overgen.util.r_arrow_bridge import RScript
 
-TESTSET_DIR = Path("var/results/v2/testset")
+EVAL_VERBS = [*VERB_TARGET_FINALE, "stop", "break"]
+
+TESTSET_DIRS = [
+    Path("var/results/v2/testset_0818_wordlevel"),
+    Path("var/results/v2/testset_0818_wordlevel_alternating"),
+]
 VERB_STATS_PATH = Path("var/results/verb_stats.parquet")
 FIGURE_DIR = Path("var/figures")
 
@@ -86,14 +92,18 @@ entry <- function(df) {
 """)
 
 
-def load_data(testset_dir: Path, has_context: bool) -> pl.DataFrame:
-    src = pl.scan_parquet(testset_dir / "*.parquet")
-    final_epoch = pl.col("ckpt_epoch") == pl.col("ckpt_epoch").max()
+def load_data(testset_dir: Path | Iterable[Path], has_context: bool) -> pl.DataFrame:
+    dirs = (testset_dir,) if isinstance(testset_dir, Path) else tuple(testset_dir)
+    src = pl.concat([pl.scan_parquet(d / "*.parquet") for d in dirs], how="vertical")
+
+    # Per-run final epoch: testset dirs may have been collected with different
+    # checkpoint cadences, so a global max would drop shorter-logged runs.
+    final_epoch = pl.col("ckpt_epoch") == pl.col("ckpt_epoch").max().over("run_name")
     common_cols = ["run_seed", "eval_verb", "eval_index_verb_context", "result_nll"] # , "result_slor"]
     common_filter = [
         pl.col("eval_construction") == "transitive",
         pl.col("eval_has_context") == has_context,
-        pl.col("eval_verb").is_in(VERB_TARGET_FINALE),
+        pl.col("eval_verb").is_in(EVAL_VERBS),
         final_epoch,
     ]
 
@@ -128,7 +138,7 @@ def run_contrast(df: pl.DataFrame, metric_col: str) -> pl.DataFrame:
 
 
 def _verb_order(by: pl.Expr) -> list[str]:
-    stats = pl.read_parquet(VERB_STATS_PATH).filter(pl.col("verb").is_in(VERB_TARGET_FINALE))
+    stats = pl.read_parquet(VERB_STATS_PATH).filter(pl.col("verb").is_in(EVAL_VERBS))
     return (
         stats.with_columns((pl.col("count_causative") / pl.col("count_verb_like")).alias("causative_ratio"))
         .sort(by, descending=True)["verb"]
@@ -204,7 +214,13 @@ def print_summary(contrasts: pl.DataFrame, metric_label: str, context_tag: str) 
 
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--testset-dir", type=Path, default=TESTSET_DIR)
+    parser.add_argument(
+        "--testset-dir",
+        type=Path,
+        nargs="+",
+        default=TESTSET_DIRS,
+        help="One or more testset result dirs; their parquet files are concatenated.",
+    )
     parser.add_argument("--figure-dir", type=Path, default=FIGURE_DIR)
     parser.add_argument(
         "--no-context",
@@ -218,8 +234,11 @@ def main() -> None:
     has_context = not args.no_context
     context_tag = "no_context" if args.no_context else "with_context"
 
-    print("Loading testset data...")
-    df = load_data(args.testset_dir, has_context)
+    testset_dirs = args.testset_dir if isinstance(args.testset_dir, list) else [args.testset_dir]
+    testset_tag = "+".join(d.name for d in testset_dirs)
+
+    print(f"Loading testset data from {[str(d) for d in testset_dirs]} ...")
+    df = load_data(testset_dirs, has_context)
     cells = sorted({(s, t) for s, t in zip(df["scope"], df["target"], strict=True)})
     print(f"  {len(df):,} rows  |  {df['eval_verb'].n_unique()} verbs  |  cells: {cells}")
 
@@ -228,7 +247,7 @@ def main() -> None:
         print_summary(contrasts, metric_label, context_tag)
         out_path = (
             args.figure_dir
-            / f"20260823.testset-0818_wordlevel_{context_tag}_{metric_key}.pdf"
+            / f"20260823.{testset_tag}_{context_tag}_{metric_key}.pdf"
         )
         plot_forest(contrasts, metric_label, out_path)
 
