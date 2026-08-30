@@ -9,7 +9,17 @@ library(ggh4x)
 # pre-aggregated loss_causative/loss_transitive. The `periodic` heartbeat rows
 # (one probe per verb every 50 steps, post-only) are the equivalent of the old
 # every-50-step eval, so we filter to those.
-verbs <- c("laugh", "cry", "go", "sleep", "sneeze", "smile")
+# Verbs from configs/trace/voi_20260829.yaml. Original intransitive-only FINALE
+# verbs first (first facet row), then the V2_ALTERNATING and V2_TRANSITIVE_ONLY
+# candidates.
+verbs <- c(
+  # VERB_TARGET_FINALE (intransitive-only)
+  "go", "laugh", "cry", "sleep", "sneeze", "smile",
+  # VERB_TARGET_CANDIDATE_V2_ALTERNATING (except open, close)
+  "break", "roll", "move", "stop", "turn",
+  # VERB_TARGET_CANDIDATE_V2_TRANSITIVE_ONLY
+  "feed", "touch", "hit", "push", "catch"
+)
 verb_file_pattern <- paste0("(", paste(verbs, collapse = "|"), ")_seed")
 
 training_dynamics <- fs::dir_ls("var/results/v2/trajectory_0829/", regexp = "*parquet") %>%
@@ -21,16 +31,20 @@ training_dynamics %>%
   group_by(verb, step, run_seed, kind) %>%
   summarize(nll = mean(nll_last_sentence), .groups = "drop") %>%
   pivot_wider(names_from = kind, values_from = nll) %>%
+  mutate(diff = sentence_transitive - sentence_causative) %>%
   group_by(verb, step) %>%
   summarize(
     n = n(),
-    diff = mean(sentence_transitive - sentence_causative),
+    se = sd(diff) / sqrt(n),
+    diff = mean(diff),
     .groups = "drop"
   ) %>%
+  mutate(verb = factor(verb, levels = verbs)) %>%
   ggplot(aes(step, diff)) +
   # geom_line(alpha = 0.2) +
   # geom_smooth() +
   # geom_point(alpha = 0.4, color = "#7DA78C") +
+  geom_ribbon(aes(ymin = diff - se, ymax = diff + se), fill = "#4E7A63", color = NA, alpha = 0.35) +
   geom_line(alpha = 0.4, color = "#7DA78C") +
   # geom_line(alpha = 0.4, color = "#6EADBC") +
   # geom_line(alpha = 0.4, color = "#F4AE52") +
@@ -44,20 +58,21 @@ training_dynamics %>%
   # geom_smooth(method = 'gam', linewidth = 1, alpha = 0.4, color = "#F4AE52", fill = "#F4AE52") +
   # geom_smooth(method = 'gam', linewidth = 1, alpha = 0.4, color = "#4B5694", fill = "#4B5694") +
   # scale_x_log10() +
-  facet_wrap(~verb, scales = "free", nrow = 1) +
+  facet_wrap(~verb, scales = "free", ncol = 6) +
   scale_x_continuous(
     labels = \(x) ifelse(x == 0, "0", label_number(scale = 1e-3, suffix = "k")(x)),
     limits = c(0, 12000),
     breaks = c(0, 3000, 6000, 9000, 12000)
   ) +
-  facetted_pos_scales(
-    y = list(
-      verb == "cry" ~ scale_y_continuous(limits = c(-0.2, 1.2)),
-      verb == "sleep" ~ scale_y_continuous(limits = c(-0.2, 1), breaks = pretty_breaks()),
-      verb == "smile" ~ scale_y_continuous(limits = c(-0.1, 1.5), breaks = pretty_breaks()),
-      verb == "sneeze" ~ scale_y_continuous(limits = c(-0.2, 1.6), breaks = pretty_breaks())
-    )
-  ) +
+  # Verb-agnostic: no manual per-verb y scaling.
+  # facetted_pos_scales(
+  #   y = list(
+  #     verb == "cry" ~ scale_y_continuous(limits = c(-0.2, 1.2)),
+  #     verb == "sleep" ~ scale_y_continuous(limits = c(-0.2, 1), breaks = pretty_breaks()),
+  #     verb == "smile" ~ scale_y_continuous(limits = c(-0.1, 1.5), breaks = pretty_breaks()),
+  #     verb == "sneeze" ~ scale_y_continuous(limits = c(-0.2, 1.6), breaks = pretty_breaks())
+  #   )
+  # ) +
   theme_classic(base_size = 16, base_family = "Times") +
   theme(
     strip.background = element_blank(),
@@ -69,4 +84,4 @@ training_dynamics %>%
     y = "&Delta;NLL<br>(transitive - periphrastic)"
   )
 
-ggsave("var/figures/precondition-exp-surprisal-diff.pdf", width = 13.90, height = 2.73, dpi=300, device = cairo_pdf)
+ggsave("var/figures/precondition-exp-surprisal-diff-candidates.pdf", width = 13.90, height = 8.19, dpi=300, device = cairo_pdf)

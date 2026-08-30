@@ -32,7 +32,7 @@ from verb_overgen.common.features import VERB_TARGET_FINALE, VERB_TARGET_CANDIDA
 from verb_overgen.exp.finale.util import ACL_COL_WIDTH, apply_acl_style, despine
 from verb_overgen.util.r_arrow_bridge import RScript
 
-EVAL_VERBS = [*VERB_TARGET_FINALE, "stop", "break"]
+EVAL_VERBS = [*VERB_TARGET_FINALE, ] # "stop", "break"]
 
 TESTSET_DIRS = [
     Path("var/results/v2/testset_0818_wordlevel"),
@@ -183,7 +183,8 @@ def plot_forest(contrasts: pl.DataFrame, metric_label: str, out_path: Path) -> N
         rf"{metric_label} Contrast (\textsc{{keep-p}} $-$ \textsc{{remove-p}}) {arrow_better}"
     )
     ax.set_ylabel("Verb")
-    ticks = ax.get_xticks()
+    # ticks = ax.get_xticks()
+    ticks = np.linspace(-0.18, 0.18, num=7)
     ax.set_xticks(ticks)
     ax.set_xlim(ticks[0] - 0.02, ticks[-1] + 0.02)
     ax.grid(axis="x", linestyle=":", alpha=0.5)
