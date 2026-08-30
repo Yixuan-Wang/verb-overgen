@@ -52,3 +52,6 @@ VERB_TARGET_CANDIDATE_V2_ALTERNATING: Final[list[str]] = [
 VERB_TARGET_CANDIDATE_V2_TRANSITIVE_ONLY = [
     "feed", "touch", "hit", "push", "catch"
 ]
+
+
+VERB_ORDER: Final[list[str]] = ["laugh", "smile", "sneeze", "cry", "sleep", "go", "roll", "stop", "move", "close", "turn", "open", "break", "catch", "hit", "push", "feed", "touch"]

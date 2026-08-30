@@ -9,16 +9,12 @@ library(ggh4x)
 # pre-aggregated loss_causative/loss_transitive. The `periodic` heartbeat rows
 # (one probe per verb every 50 steps, post-only) are the equivalent of the old
 # every-50-step eval, so we filter to those.
-# Verbs from configs/trace/voi_20260829.yaml. Original intransitive-only FINALE
-# verbs first (first facet row), then the V2_ALTERNATING and V2_TRANSITIVE_ONLY
-# candidates.
+# Verbs from configs/trace/voi_20260829.yaml, ordered to match VERB_ORDER in
+# src/verb_overgen/common/features.py.
 verbs <- c(
-  # VERB_TARGET_FINALE (intransitive-only)
-  "go", "laugh", "cry", "sleep", "sneeze", "smile",
-  # VERB_TARGET_CANDIDATE_V2_ALTERNATING (except open, close)
-  "break", "roll", "move", "stop", "turn",
-  # VERB_TARGET_CANDIDATE_V2_TRANSITIVE_ONLY
-  "feed", "touch", "hit", "push", "catch"
+  "laugh", "smile", "sneeze", "cry", "sleep", "go" #,
+  # "roll", "stop", "move", "turn", "break",
+  # "catch", "hit", "push", "feed", "touch"
 )
 verb_file_pattern <- paste0("(", paste(verbs, collapse = "|"), ")_seed")
 
@@ -84,4 +80,4 @@ training_dynamics %>%
     y = "&Delta;NLL<br>(transitive - periphrastic)"
   )
 
-ggsave("var/figures/precondition-exp-surprisal-diff-candidates.pdf", width = 13.90, height = 8.19, dpi=300, device = cairo_pdf)
+ggsave("var/figures/precondition-exp-surprisal-diff-candidates.pdf", width = 13.90, height = 2.73, dpi=300, device = cairo_pdf)

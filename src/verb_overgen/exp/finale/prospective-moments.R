@@ -18,16 +18,10 @@ library(ggh4x)
 # `pair = index_sentence %/% 2` links the two (replacing the old
 # `eval_index_verb_context`).
 #
-# Verbs from configs/trace/voi_20260829.yaml. Original intransitive-only FINALE
-# verbs first (first facet row), then the V2_ALTERNATING and V2_TRANSITIVE_ONLY
-# candidates.
+# Verbs from configs/trace/voi_20260829.yaml, ordered to match VERB_ORDER in
+# src/verb_overgen/common/features.py.
 verbs <- c(
-  # VERB_TARGET_FINALE (intransitive-only)
-  "go", "laugh", "cry", "sleep", "sneeze", "smile",
-  # VERB_TARGET_CANDIDATE_V2_ALTERNATING (except open, close)
-  "break", "roll", "move", "stop", "turn",
-  # VERB_TARGET_CANDIDATE_V2_TRANSITIVE_ONLY
-  "feed", "touch", "hit", "push", "catch"
+  "laugh", "smile", "sneeze", "cry", "sleep", "go"
 )
 verb_file_pattern <- paste0("(", paste(verbs, collapse = "|"), ")_seed")
 
@@ -36,7 +30,14 @@ results_dump <- fs::dir_ls("var/results/v2/trajectory_0829/", regexp = "*parquet
   map_df(~arrow::read_parquet(.x), .id = "file")
 
 # Pair each pre/post probe into a single moment and take the change (prepost).
+# Prospective causative moments are the probes taken around an actual causative
+# training step, i.e. `trigger_reason == "causative"`. The other reasons are
+# irrelevant here: `entrench` probes non-causative steps, and `periodic` are
+# post-only snapshots with no matching `pre` (their extra `post` rows drift
+# `relative_step` — a within-phase row_number over step_effective — so pre/post
+# pivot out of alignment, corrupting prepost and injecting NAs).
 moments_raw <- results_dump %>%
+  filter(trigger_reason == "causative") %>%
   select(run_seed, verb, step_type, kind, index_sentence, epoch, phase, step_effective, nll_last_sentence) %>%
   group_by(run_seed, verb, step_type, kind, index_sentence, phase) %>%
   mutate(relative_step = row_number(step_effective)) %>%
@@ -118,4 +119,4 @@ moments_points %>%
     y = "Transitive NLL"
   )
 
-ggsave("var/figures/prospective-moments-corr.pdf", width = 13.90, height = 8.64, dpi = 300, device = cairo_pdf)
+ggsave("var/figures/prospective-moments-corr.pdf", width = 13.90, height = 3.20, dpi = 300, device = cairo_pdf)

@@ -12,6 +12,13 @@ alternating eval items), concatenated. Each bundles every `run_scope`
 has no `with_context` items and no SLOR, so this analysis is NLL-only and
 `no_context`-only.
 
+`--tokenization bpe` instead reads `var/results/v2/testset_0818_bpe`
+(BPE-tokenized runs). That testset only has the `per-verb` and `all-verb`
+scopes, and its `per-verb` arm only covers the periphrastic intransitives (no
+alternating verbs), so the plot narrows to whichever scopes/verbs are actually
+present in the data. This analysis stays `no_context`-only regardless of
+tokenization.
+
 Preemption hypothesis: removing the preempting causatives (p) should increase
 overgeneralization more than removing entrenchment-minus-preemption (e).
 Expected direction of the contrast (remove::e − remove::p): NLL > 0.
@@ -25,7 +32,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 import polars as pl
 
-from verb_overgen.common.features import VERB_TARGET_FINALE 
+from verb_overgen.common.features import VERB_TARGET_FINALE, VERB_ORDER
 from verb_overgen.exp.finale.util import ACL_COL_WIDTH, apply_acl_style, despine
 from verb_overgen.util.r_arrow_bridge import RScript
 
@@ -35,10 +42,13 @@ VERB_TARGET = [*VERB_TARGET_FINALE, *ALTERNATING_VERBS]
 # All scopes live in these directories, distinguished by the `run_scope`
 # column rather than by separate directories. The `_alternating` dir carries
 # the per-verb alternating eval items and is concatenated in.
-TESTSET_DIRS = [
-    Path("var/results/v2/testset_0818_wordlevel"),
-    Path("var/results/v2/testset_0818_wordlevel_alternating"),
-]
+TESTSET_DIRS = {
+    "wordlevel": [
+        Path("var/results/v2/testset_0818_wordlevel"),
+        Path("var/results/v2/testset_0818_wordlevel_alternating"),
+    ],
+    "bpe": [Path("var/results/v2/testset_0818_bpe")],
+}
 VERB_STATS_PATH = Path("var/results/verb_stats.parquet")
 FIGURE_DIR = Path("var/figures")
 
@@ -57,44 +67,45 @@ library(arrow); library(dplyr); library(lme4); library(emmeans); library(broom)
 entry <- function(df) {
     df <- df |>
         as_tibble() |>
-        mutate(
-            cell = factor(
-                paste(target, scope, sep = "_"),
-                levels = c("p_per-verb",         "e_per-verb",
-                           "p_all-verb",         "e_all-verb",
-                           "p_all-intrans-only", "e_all-intrans-only")
-            ),
-            eval_verb = relevel(factor(eval_verb), ref = "go")
-        )
+        mutate(eval_verb = relevel(factor(eval_verb), ref = "go"))
+
+    # Derive the cell factor and one `e - p` contrast per scope from whatever
+    # scopes are actually present, ordered as they first appear in the frame.
+    scopes <- unique(df$scope)
+    levels <- as.vector(rbind(paste0("p_", scopes), paste0("e_", scopes)))
+    df <- df |>
+        mutate(cell = factor(paste(target, scope, sep = "_"), levels = levels))
 
     model <- lmer(
         metric ~ cell * eval_verb + (1 | run_seed:eval_verb:eval_index_verb_context),
         data = df
     )
 
-    # Cell order: 1=p_per, 2=e_per, 3=p_all, 4=e_all, 5=p_intrans, 6=e_intrans.
+    method <- setNames(
+        lapply(seq_along(scopes), function(i) {
+            v <- rep(0, length(levels)); v[2 * i - 1] <- -1; v[2 * i] <- +1; v
+        }),
+        scopes
+    )
+
     model |>
         emmeans(~ cell | eval_verb) |>
-        contrast(method = list(
-            `per-verb`         = c(-1, +1,  0,  0,  0,  0),
-            `all-verb`         = c( 0,  0, -1, +1,  0,  0),
-            `all-intrans-only` = c( 0,  0,  0,  0, -1, +1)
-        ), adjust = "mvt") |>
+        contrast(method = method, adjust = "mvt") |>
         tidy()
 }
 """)
 
 
-def load_data() -> pl.DataFrame:
+def load_data(dirs: list[Path], verbs: list[str], scopes: list[str]) -> pl.DataFrame:
     src = pl.concat(
-        [pl.scan_parquet(d / "*.parquet") for d in TESTSET_DIRS], how="vertical"
+        [pl.scan_parquet(d / "*.parquet") for d in dirs], how="vertical"
     )
 
     common_cols = ["run_seed", "eval_verb", "eval_index_verb_context", "result_nll"]
     common_filter = [
         pl.col("eval_construction") == "transitive",
-        pl.col("eval_has_context") == False,  # noqa: E712
-        pl.col("eval_verb").is_in(VERB_TARGET),
+        pl.col("eval_has_context") == False,  # noqa: E712  — no_context only, always
+        pl.col("eval_verb").is_in(verbs),
         # Per-run final epoch: testset dirs may have been collected with
         # different checkpoint cadences, so a global max would drop
         # shorter-logged runs.
@@ -119,7 +130,9 @@ def load_data() -> pl.DataFrame:
             )
         )
 
-    arms = [remove_arm(scope, target) for scope, *_ in SCOPES for target in ("p", "e")]
+    # Empty arms (e.g. `all-intrans-only` is absent from the BPE testset)
+    # contribute no rows, so the downstream contrast only sees cells that exist.
+    arms = [remove_arm(scope, target) for scope in scopes for target in ("p", "e")]
     return pl.concat([a.collect() for a in arms])
 
 
@@ -131,20 +144,21 @@ def run_contrast(df: pl.DataFrame) -> pl.DataFrame:
     ).rename({"contrast": "scope"})
 
 
-def _verb_order(by: pl.Expr) -> list[str]:
-    """Sort the periphrastic and alternating verb groups independently, then
-    stack them: alternating (break, stop) first, periphrastic last."""
-    stats = pl.read_parquet(VERB_STATS_PATH).filter(pl.col("verb").is_in(VERB_TARGET))
-    ranked = stats.with_columns(
-        (pl.col("count_causative") / pl.col("count_verb_like")).alias("causative_ratio")
-    ).sort(by, descending=True)["verb"].to_list()
-    periphrastic = [v for v in ranked if v not in ALTERNATING_VERBS]
-    alternating = [v for v in ranked if v in ALTERNATING_VERBS]
-    return alternating + periphrastic
+def _verb_order(present: set[str]) -> list[str]:
+    """Follow VERB_ORDER but reversed, so the first VERB_ORDER verb sits at the
+    top of the forest plot. The alternating verbs (break, stop) stay grouped at
+    the bottom, separated by a visual gap. Only verbs present in the data are
+    kept (the BPE testset has none of the alternating verbs)."""
+    ordered = [v for v in VERB_ORDER if v in VERB_TARGET and v in present]
+    periphrastic = [v for v in ordered if v not in ALTERNATING_VERBS]
+    alternating = [v for v in ordered if v in ALTERNATING_VERBS]
+    return list(reversed(alternating)) + list(reversed(periphrastic))
 
 
 def plot_forest(contrasts: pl.DataFrame, out_path: Path, scopes=SCOPES) -> None:
-    verbs = _verb_order(pl.col("count_causative"))
+    present = set(contrasts["eval_verb"].to_list())
+    verbs = _verb_order(present)
+    scopes = [s for s in scopes if s[0] in set(contrasts["scope"].to_list())]
     n_scopes = len(scopes)
     dodge = 0.7 / n_scopes
     n_alt = sum(v in ALTERNATING_VERBS for v in verbs)
@@ -217,6 +231,12 @@ def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--figure-dir", type=Path, default=FIGURE_DIR)
     parser.add_argument(
+        "--tokenization",
+        choices=("wordlevel", "bpe"),
+        default="wordlevel",
+        help="Which testset to read: word-level (default) or BPE-tokenized runs.",
+    )
+    parser.add_argument(
         "--show-intrans-only",
         action="store_true",
         help="Include the 'Abstract (Intransitive Only)' scope in the plot (hidden by default).",
@@ -225,21 +245,29 @@ def main() -> None:
 
     os.chdir(os.environ.get("PWD", "."))
 
+    dirs = TESTSET_DIRS[args.tokenization]
+    verbs = VERB_TARGET if args.tokenization == "wordlevel" else VERB_TARGET_FINALE
+
+    scope_keys = [s[0] for s in SCOPES]
+    if not args.show_intrans_only:
+        scope_keys = [s for s in scope_keys if s != "all-intrans-only"]
+
     print("Loading testset data...")
-    df = load_data()
+    df = load_data(dirs, verbs, scope_keys)
     cells = sorted({(s, t) for s, t in zip(df["scope"], df["target"], strict=True)})
     print(f"  {len(df):,} rows  |  {df['eval_verb'].n_unique()} verbs  |  cells: {cells}")
 
     contrasts = run_contrast(df)
     print_summary(contrasts)
 
-    scopes = SCOPES if args.show_intrans_only else [
-        s for s in SCOPES if s[0] != "all-intrans-only"
-    ]
+    scopes = [s for s in SCOPES if s[0] in scope_keys]
     suffix = "_with_intrans_only" if args.show_intrans_only else ""
+    # Keep the original untagged name for the default (word-level) run so
+    # downstream references don't break; tag only the BPE variant.
+    tok_tag = "" if args.tokenization == "wordlevel" else f"_{args.tokenization}"
     out_path = (
         args.figure_dir
-        / f"20260830.preemption-hypothesis-scope-comparison_no_context_nll{suffix}.pdf"
+        / f"20260830.preemption-hypothesis-scope-comparison{tok_tag}_no_context_nll{suffix}.pdf"
     )
     plot_forest(contrasts, out_path, scopes=scopes)
 

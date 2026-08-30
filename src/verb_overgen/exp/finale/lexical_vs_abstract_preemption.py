@@ -28,7 +28,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 import polars as pl
 
-from verb_overgen.common.features import VERB_TARGET_FINALE, VERB_TARGET_CANDIDATE_V2_ALTERNATING
+from verb_overgen.common.features import VERB_TARGET_FINALE, VERB_TARGET_CANDIDATE_V2_ALTERNATING, VERB_ORDER
 from verb_overgen.exp.finale.util import ACL_COL_WIDTH, apply_acl_style, despine
 from verb_overgen.util.r_arrow_bridge import RScript
 
@@ -137,17 +137,13 @@ def run_contrast(df: pl.DataFrame, metric_col: str) -> pl.DataFrame:
     ).rename({"contrast": "effect"})
 
 
-def _verb_order(by: pl.Expr) -> list[str]:
-    stats = pl.read_parquet(VERB_STATS_PATH).filter(pl.col("verb").is_in(EVAL_VERBS))
-    return (
-        stats.with_columns((pl.col("count_causative") / pl.col("count_verb_like")).alias("causative_ratio"))
-        .sort(by, descending=True)["verb"]
-        .to_list()
-    )
+def _verb_order(contrasts: pl.DataFrame) -> list[str]:
+    present = set(contrasts["eval_verb"].to_list())
+    return [v for v in VERB_ORDER if v in present]
 
 
 def plot_forest(contrasts: pl.DataFrame, metric_label: str, out_path: Path) -> None:
-    verbs = _verb_order(pl.col("count_causative"))
+    verbs = _verb_order(contrasts)
     n_effects = len(CONTRASTS)
     dodge = 0.7 / n_effects
     y_pos = {v: i for i, v in enumerate(verbs)}
