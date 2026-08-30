@@ -450,9 +450,10 @@ class TrainingSession:
                     }
                 )
 
+        self.sampler_train = self.dataset_train.create_sampler(shuffle=randgen_train_shuffling)
         self.dataloader_train = torch.utils.data.DataLoader(
             self.dataset_train,
-            batch_sampler=self.dataset_train.create_sampler(shuffle=randgen_train_shuffling),
+            batch_sampler=self.sampler_train,
             collate_fn=(
                 self.dataset_train.collate_fn_without_filter
                 if self.cfg.data.train.subset in ("full", "full_augmented")
@@ -600,7 +601,8 @@ class TrainingSession:
                 dataset_eval_overgen=self.dataset_eval_overgen,
                 eval_batch_size=self.cfg.data.eval_overgen.batch_size,
                 token_id_bos=self.tokenizer._tokenizer.token_to_id(BOS_TOKEN),
-                reservoir_stride=int(OmegaConf.select(self.cfg, "trace.monitor_step_reservoir_stride", default=50)),
+                sampler=self.sampler_train,
+                periodic_stride=int(OmegaConf.select(self.cfg, "trace.monitor_step_periodic_stride", default=50)),
             )]
         else:
             # Use the normal eval loss monitor

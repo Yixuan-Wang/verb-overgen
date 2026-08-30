@@ -375,10 +375,10 @@ class SamplerBin(Sampler[list[int]]):
         The main rows occupy dataframe indices `[0, len(list_len))`; aug rows
         are assumed to be a contiguous suffix at indices `[len(list_len),
         len(list_len) + n_aug)`. Bins are stored as `(start, end)` ranges in
-        `__init__`; the bin permutation and aug-row dispersion are recomputed
-        on every `__iter__` call so that each epoch sees a fresh order. The
-        cached `torch.Generator` is reused across epochs, so its RNG state
-        advances naturally.
+        `__init__`, and the bin permutation and aug-row dispersion are computed
+        once in `__init__` too. `__iter__` merely replays that fixed order, so
+        every epoch sees the identical batch sequence (per-epoch reshuffle was
+        deliberately reverted in commit 12d0156).
 
         Args:
             list_len: Lengths of the *main* rows to be greedily binned.

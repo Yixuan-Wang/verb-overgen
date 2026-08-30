@@ -1,6 +1,6 @@
 #!/usr/bin/env -S uv run --no-project --script
 #SBATCH --account=aip-fredashi
-#SBATCH --job-name=verb-overgen-260514-trajectory
+#SBATCH --job-name=verb-overgen-260829-trajectory
 #SBATCH --cpus-per-task=8
 #SBATCH --gres=gpu:l40s:1
 #SBATCH --mem=32G
@@ -62,12 +62,12 @@ def main():
         "run", "-m", "verb_overgen.train.train",
         "trainer.max_epochs=3",
         "trainer.checkpoint.every_n_epochs=3",
-        "wandb.tags=['260514-trajectory']",
+        "wandb.tags=['260829-trajectory']",
         f"seed={seed}",
         f"data.train.shuffle_seed={shuffle_seed}",
         f"data.train.subset_seed={subset_seed}",
         "data.train.subset=full",
-        "+trace=voi_10",
+        "+trace=voi_20260829",
         "+trace.monitor_step=true",
         _fg=True,
     )

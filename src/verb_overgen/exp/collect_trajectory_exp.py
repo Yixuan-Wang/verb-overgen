@@ -50,6 +50,13 @@ def main() -> None:
 
             for verb, dataset_path in verb_paths.items():
                 dataset = pl.scan_parquet(dataset_path)
+                # Rows carry `trigger_reason` in {causative, entrench, periodic}. The
+                # causative/entrench probes are paired pre+post effect measurements; the
+                # periodic heartbeat is post-only. `step_effective` folds each post back
+                # onto its pre's step (global_step advances by 1 during the batch), so all
+                # post rows — periodic included — land on the training-step timeline
+                # alongside their (possibly absent) pre. `batch_causative_total` and every
+                # other column flow through untouched via `pl.all()`.
                 dataset = dataset.select(
                     pl.lit(run_name).alias("run_name"),
                     pl.lit(metadata["seed"]).alias("run_seed"),

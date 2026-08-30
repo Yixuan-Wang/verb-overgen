@@ -1,0 +1,20 @@
+tokens_to_watch:
+  # VERB_TARGET_FINALE
+  - go
+  - laugh
+  - cry
+  - sleep
+  - sneeze
+  - smile
+  # VERB_TARGET_CANDIDATE_V2_ALTERNATING (except open, close)
+  - break
+  - roll
+  - move
+  - stop
+  - turn
+  # VERB_TARGET_CANDIDATE_V2_TRANSITIVE_ONLY
+  - feed
+  - touch
+  - hit
+  - push
+  - catch
